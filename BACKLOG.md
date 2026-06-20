@@ -41,40 +41,19 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       decays to neutral), mapped to `difficulty_pressure()`; CarSpawner nudges spawn interval
       (±~12%) and shaves/adds one car at the extremes — dodgeable-gap guarantee preserved.
 
-- [ ] **Gun scaling: tame runaway layering (LOCKED SPEC — implement, do NOT re-decide)** (Core
-      fun #1 / power-fantasy pillar): **The human has made this design call — commit to the
-      Vampire-Survivors direction: escalating power IS the core fun, depth-over-breadth. Keep the
-      timed stacking model; do NOT make it a permanent static loadout. Just bound the runaway.**
-      Diagnosis (verified against `GunManager.gd`): per-gun leveling is already tame and bounded
-      (fire rate `pow(0.86, level-1)` → 1.83× at L5; pellets +1/level on SHOTGUN/SPREAD only,
-      hard-capped at `MAX_LEVEL = 5`). The actual "totally insane" runaway is **uncapped
-      simultaneous weapons** — all 9 guns can be owned and ALL fire at once (~95 projectiles/s +
-      hitscan laser + AOE mortars, MINIGUN alone ~30/s), and `roll_choices` actively pushes sprawl
-      ("lead with a new gun") because leveling is too thin to compete with collecting. Fix = cap
-      breadth, reward depth. Implement exactly these (keep `MAX_LEVEL = 5` and the existing
-      geometric `pow(0.86, level-1)` rate curve):
-      1. **`MAX_GUNS := 6` weapon-slot cap** (VS's own number). In `add_gun`, when the id is new
-         and `owned.size() >= MAX_GUNS`, redirect the pickup into a level on the **lowest-level
-         owned gun** instead of refusing it. In `roll_choices`, once at the cap stop offering
-         unowned guns (offer `upgradable` only).
-      2. **`MIN_COOLDOWN := 0.05` per-gun fire-rate floor** (20 shots/s ceiling): clamp
-         `st["cd"] = maxf(st["cd"], MIN_COOLDOWN)` right after computing it in `_process`. Kills
-         the MINIGUN/RAPID hose and protects the 60fps spell.
-      3. **Make leveling powerful but bounded so depth beats breadth** — give the single-projectile
-         guns a real per-level reward (today they get only the rate bump): RAPID/MINIGUN gain
-         **+1 parallel stream every 2 levels** (2nd at L3, 3rd at L5); RAILGUN/LASER gain **+0.5 m
-         corridor/pierce radius per level**; MORTAR gains **+1.0 m AOE per level, capped at +4 m**.
-         Cap pellet totals at **`PELLET_CAP := 9`** (`pellets = min(base + (level-1), PELLET_CAP)`)
-         so SHOTGUN/SPREAD can't balloon.
-      4. **Bias the roller toward depth**: once you own **>= 3** guns, lead with an *upgrade* of an
-         owned gun rather than a new one (~**60% upgrade / 40% new**).
-      Also **fix the stale code comments** in `GunManager.gd` that say "30s layer" — the constant is
-      `GUN_DURATION := 20.0`; the comments on `_stacks` (~line 97) and `add_gun` (~line 132) should
-      say **20 s**. Rebalance + verify headless per CLAUDE.md (exercise a stacked loadout via the
-      `Main._ready` swap; confirm the slot cap redirects to the lowest gun, the cooldown floor holds,
-      and worst-case projectile rate drops to ~55–60/s). High leverage on the core hook. Smallest
-      viable subset if time is short: items **1 + 2** alone bound the runaway and protect framerate;
-      3 + 4 are the make-it-feel-great polish and can be a follow-up iteration.
+- [x] **Gun scaling: tame runaway layering (LOCKED SPEC)** — DONE iter 16 (see Done). All 4
+      locked items shipped: `MAX_GUNS=6` slot cap (over-cap NEW pickups redirect into the
+      lowest-level owned gun; `roll_choices` stops offering unowned guns at cap), `MIN_COOLDOWN=0.05`
+      per-gun fire-rate floor, per-level depth rewards (RAPID/MINIGUN parallel streams, RAILGUN/LASER
+      +0.5 m corridor/level, MORTAR +1 m AOE/level capped +4 m, `PELLET_CAP=9`), and the ≥3-owned
+      ~60/40 upgrade-lead bias. Stale "30s layer" comments fixed to 20 s.
+
+- [ ] **Gun slot-cap feedback cue** (follow-up to iter 16): when `add_gun` redirects an over-cap
+      NEW pickup into the lowest-level owned gun, the player has no idea why the new gun "didn't
+      appear." Add a brief HUD toast/floater ("MAX GUNS · RAPID +1") + a small punch on that gun's
+      panel row, and consider showing the slot count ("6/6 GUNS") on the HUD gun panel. Small,
+      scoped; makes the (good) slot-cap behavior legible. `add_gun` already knows the redirect
+      target — emit a signal or reuse `guns_changed` with a one-shot flag.
 
 - [ ] **Tutorial polish v2 + bullet-time/weapon teaching** (follow-up to iter-12 onboarding):
       the first-run tutorial teaches move/jump/stomp; extend the same pattern to the bullet-time
@@ -181,7 +160,50 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
-- [x] **Player rim/back light + stronger per-biome grade** (2026-06-19, iter 15) — attacks
+- [x] **Gun scaling: tame runaway layering (LOCKED SPEC)** (2026-06-20, iter 16) — implemented the
+      human-locked spec to bound the Vampire-Survivors runaway while keeping escalating power as the
+      core fun (#1 Core fun / power-fantasy pillar). The runaway was **uncapped simultaneous
+      weapons** (all 9 guns firing at once ~95 proj/s), so the fix = **cap breadth, reward depth**.
+      Shipped all four locked items in `GunManager.gd`:
+      (1) **`MAX_GUNS=6` weapon-slot cap** — `add_gun` redirects a brand-new gun picked up beyond the
+      cap into a level on the **lowest-level owned gun** (new `_lowest_level_owned()`; ties → first
+      found in insertion order) so the pickup still rewards you (deeper, not wider); `roll_choices`
+      clears the unowned pool once at the cap so the level-up screen only offers upgrades.
+      (2) **`MIN_COOLDOWN=0.05` per-gun floor** — `st["cd"] = maxf(st["cd"], MIN_COOLDOWN)` after the
+      schedule block in `_process` (20 shots/s ceiling per gun; only bites the rapid cadences, burst
+      pause is always above it).
+      (3) **Depth rewards** — RAPID(BURST)/MINIGUN gain **+1 parallel stream every 2 levels**
+      (`1 + (level-1)/2` → 2nd@L3, 3rd@L5) via new `_fire_streams(gun, streams, jitter, fan_step)`
+      (MINIGUN keeps its random jitter, RAPID a tight jitter-free fan); RAILGUN **+0.5 m sweep
+      corridor/level** (base 0.9 → 2.9 m at L5) and LASER **+0.5 m beam corridor/level** (1.5 → 3.5 m
+      at L5); MORTAR **+1 m AOE/level capped at +4 m** (6 → 10 m at L5); SHOTGUN/SPREAD pellets
+      `min(base+(level-1), PELLET_CAP=9)`. Per-level boosts pass through a new `_spawn(..., overrides)`
+      param (aoe / hit_radius) so the const `GUNS` dict stays the base recipe.
+      (4) **Depth-biased roller** — once you own **≥3** guns, `roll_choices` leads with an *upgrade*
+      of an owned gun ~60% of the time instead of always leading with a new gun.
+      Also fixed the stale "30s layer" comments (`_stacks` / `add_gun`) to **20 s** (the constant is
+      `GUN_DURATION=20.0`). Files: `scripts/autoload/GunManager.gd` only (constants, `add_gun` redirect
+      + `_lowest_level_owned`, `roll_choices` cap+bias, `_process` cd floor, `_fire` per-level rewards
+      + `_fire_streams`, `_spawn` overrides + RAILGUN hit_radius, `_fire_beam` level radius). Verified
+      (per CLAUDE.md): clean headless boot, no `error|script|parse|invalid|shader`. Exercised via the
+      `Main._ready` swap (`_gunscaletest`): owned 6 distinct guns → 7th NEW (MINIGUN) **rejected**,
+      size stayed 6, the lowest-level gun (RAPID, first lvl-1 in insertion order) leveled 1→2;
+      `roll_choices` at cap offered a NEW gun **0/40** rolls and led with an upgrade **200/200**;
+      maxed MINIGUN/RAPID reached L5 (streams=3); a heavy maxed loadout (SHOTGUN/LASER/MORTAR/RAILGUN
+      L5) auto-fired live for 4 s producing `[Car] CRUMPLE!` with **zero** SCRIPT ERROR/nil/invalid —
+      proving the new `_fire_streams`/override paths run end-to-end. Swap restored from `/tmp/Main.gd.bak`
+      (`_gunscaletest` gone, `_front_end.begin()` back) + re-verified a clean boot.
+      - [ ] Human playtest / balance (the numbers are first-pass): does the slot cap *feel* good — is
+            redirecting an over-cap pickup into your weakest gun satisfying, or does it want a tiny HUD
+            tell ("MAX GUNS — leveled RAPID")? Does the 0.05 s floor noticeably tame the MINIGUN hose
+            without making it feel weak? Are the per-level depth rewards (streams / corridor / AOE)
+            readable as "my gun got stronger"? Tune `MAX_GUNS`/`MIN_COOLDOWN`/`PELLET_CAP`, the
+            `_fire_streams` `fan_step` angles (5°/3.5°), the RAILGUN/LASER +0.5 m and MORTAR +1 m
+            per-level rates, and the 0.6 upgrade-lead probability. Follow-up logged below.
+      - [ ] Follow-up (NOW): a small HUD/feedback cue when an over-cap pickup is redirected into an
+            owned gun, so the player understands why the new gun "didn't appear." Also the noted
+            "Gun balance pass" (every gun has a reason to be picked) now has the depth rewards to tune
+            against. Consider showing the slot count (e.g. "6/6 GUNS") on the HUD gun panel.
       #4 Visual polish (the "asset-flip → art-directed" lever). Before, only fog/ambient/sun
       changed per biome and the runner had no separation light. Now TWO additions, both
       biome-keyed and cross-fading: (1) a code-built `RimLight` OmniLight3D on the runner

@@ -866,3 +866,79 @@ should be eyeballed on a real biome transition. Tune the per-theme `rim`/`grade_
 `sat` in Highway.gd, `_rim_base_energy`/pulse in PlayerController, and the `delta*0.9` crossfade
 rate in Main. Low regression risk: additive, no gameplay/collision/spawner changes; worst case
 is purely cosmetic and easily tuned.
+
+---
+
+## 2026-06-20 — Gun scaling: bound the runaway, reward depth (iter 16, Build mode)
+
+**Mode note:** Iter 16 is a multiple of 4 (normally deep-audit cadence), but the **human-LOCKED**
+gun-scaling spec sat at the top of NOW, committed just before this run, explicitly marked
+"implement, do NOT re-decide." That's the single highest-leverage item on the core hook (#1 Core
+fun / power-fantasy pillar) and the human's stated priority. Running a formal audit instead would
+only re-confirm priorities we already know (gun scaling + pooling). So I **deferred the audit** to
+ship the locked spec; the next multiple-of-4 (iter 20) can do the full rubric scorecard.
+
+**What & why:** The Vampire-Survivors gun stacking is the depth engine, but the runaway was
+**uncapped simultaneous weapons** — all 9 guns ownable and ALL firing at once (~95 proj/s + hitscan
+laser + AOE mortars), with `roll_choices` actively pushing sprawl ("lead with a new gun") because
+leveling was too thin to compete with collecting. The locked fix = **cap breadth, reward depth**,
+keeping the timed-stacking model (NOT a static loadout).
+
+**Shipped all four locked items (`GunManager.gd` only):**
+1. **`MAX_GUNS=6` weapon-slot cap.** `add_gun` redirects a brand-new gun picked up beyond the cap
+   into a level on the **lowest-level owned gun** (new `_lowest_level_owned()`, ties → first found
+   in insertion order) — the pickup still rewards you, just deeper not wider. `roll_choices` clears
+   the unowned pool once `owned.size() >= MAX_GUNS`, so the level-up screen only offers upgrades.
+2. **`MIN_COOLDOWN=0.05` per-gun fire-rate floor.** `st["cd"] = maxf(float(st["cd"]), MIN_COOLDOWN)`
+   right after the schedule block in `_process` (20 shots/s ceiling per gun). Only bites the rapid
+   cadences — the burst pause is always well above it.
+3. **Per-level depth rewards** (so depth beats breadth, not just a rate bump):
+   - RAPID(BURST)/MINIGUN: **+1 parallel stream every 2 levels** (`1 + (level-1)/2` → 2nd@L3, 3rd@L5)
+     via new `_fire_streams(gun, streams, jitter, fan_step)` — MINIGUN keeps random jitter (hose
+     feel, 5° fan), RAPID a tight jitter-free 3.5° fan.
+   - RAILGUN: **+0.5 m sweep corridor/level** (base 0.9 → 2.9 m @L5, via a `hit_radius` override).
+   - LASER: **+0.5 m beam corridor/level** (1.5 → 3.5 m @L5, `_fire_beam(gun, level)`).
+   - MORTAR: **+1 m AOE/level capped at +4 m** (6 → 10 m @L5, via an `aoe` override).
+   - SHOTGUN/SPREAD: `pellets = min(base + (level-1), PELLET_CAP=9)` so they can't balloon.
+   Per-level boosts pass through a new `_spawn(gun, angle, overrides={})` param (aoe / hit_radius)
+   so the const `GUNS` dict stays the base recipe — no per-level mutation of shared state.
+4. **Depth-biased roller.** Once you own **≥3** guns, `roll_choices` leads with an *upgrade* of an
+   owned gun **~60%** of the time (else a new gun), so a mid-run loadout visibly *stacks* instead of
+   sprawling. Below 3 guns it still leads with a new gun to expand early.
+
+Also fixed the stale **"30s layer"** comments (`_stacks` ~L97, `add_gun` ~L132) to **20 s** — the
+constant is `GUN_DURATION=20.0`.
+
+**Files touched:** `scripts/autoload/GunManager.gd` (only): 3 new consts, `add_gun` redirect +
+`_lowest_level_owned()`, `roll_choices` cap-clear + ≥3 upgrade-lead, `_process` cd floor, `_fire`
+per-level rewards + `_fire_streams`, `_spawn` overrides + RAILGUN hit_radius application,
+`_fire_beam` level-scaled radius. Plus `BACKLOG.md` + this journal. **No** spawner/collision/
+projectile-script changes — the projectile contract is unchanged, only its configured values differ.
+
+**Verified (per CLAUDE.md):** Clean headless boot, no `error|script|parse|invalid|shader` (ignored
+"resources still in use at exit"). Exercised via the documented `Main._ready` swap (`_gunscaletest`,
+since the front-end never auto-starts headless):
+- **Slot cap:** owned 6 distinct guns (PISTOL@3 + 5 others@1) → added a 7th NEW gun (MINIGUN) →
+  **rejected**, `owned.size()` stayed 6, `has("MINIGUN")==false`, and the lowest-level gun (RAPID,
+  first lvl-1 in insertion order) leveled **1→2**. (My first test assumed the tie would go to
+  SHOTGUN — corrected: ties go to the first level-1 gun in insertion order, which is RAPID.)
+- **Roller at cap:** offered a NEW gun **0/40** rolls; led with an upgrade **200/200**.
+- **Leveling:** maxed MINIGUN/RAPID reached L5; streams at L5 = `1 + (5-1)/2 = 3`.
+- **Live fire:** a heavy maxed loadout (SHOTGUN/LASER/MORTAR/RAILGUN all L5) auto-fired for 4 s
+  against real spawned cars → `[Car] CRUMPLE!` with **zero** SCRIPT ERROR / null instance / invalid,
+  proving the new `_fire_streams` + `_spawn(overrides)` + `_fire_beam(level)` paths run end-to-end.
+Swap restored from `/tmp/Main.gd.bak` (grep confirms `_gunscaletest` gone, `_front_end.begin()`
+back) + re-ran a clean headless boot (no matches).
+
+**Unverified / risk — human should playtest & balance (numbers are first-pass, feel is GPU/play-
+unconfirmed):** Low *regression* risk — single-file, additive, the projectile contract is unchanged
+and worst case the bounds make the guns do *less*, never something broken. But the *balance/feel* is
+the whole point and unverified: does redirecting an over-cap pickup into your weakest gun read as
+satisfying or confusing (logged a follow-up: a HUD "MAX GUNS · RAPID +1" cue + a "6/6 GUNS" slot
+count)? Does the 0.05 s floor tame the MINIGUN hose without making it feel weak? Are the per-level
+depth rewards (parallel streams / wider corridor / bigger crater) *readable* as "my gun got
+stronger"? Tune: `MAX_GUNS`/`MIN_COOLDOWN`/`PELLET_CAP`, the `_fire_streams` `fan_step` angles
+(5°/3.5°), the RAILGUN/LASER +0.5 m and MORTAR +1 m per-level rates, and the 0.6 upgrade-lead
+probability. The locked spec's stated target was worst-case projectile rate dropping to ~55–60/s;
+that follows from MAX_GUNS=6 × the 0.05 s floor but was not directly profiled this iter — worth a
+real frame-pacing check under max carnage (ties into the still-open pooling item).

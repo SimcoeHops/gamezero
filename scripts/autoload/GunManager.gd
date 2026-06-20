@@ -19,6 +19,19 @@ enum Pattern { SINGLE, BURST, SHOTGUN, LASER, MORTAR, SPREAD, MINIGUN, RAIL, NET
 ## Highest level a single gun can reach (also the cap on stacked timed layers).
 const MAX_LEVEL := 5
 
+## Maximum number of distinct guns owned at once (Vampire-Survivors weapon-slot
+## cap). A brand-new gun picked up beyond this deepens an owned gun instead of
+## opening a 7th slot — this is what bounds the runaway simultaneous-fire rate.
+const MAX_GUNS := 6
+
+## Per-gun fire-rate floor (seconds). 0.05 = a 20 shots/s ceiling on any single
+## gun, so even a maxed RAPID/MINIGUN can't hose hard enough to threaten 60fps.
+const MIN_COOLDOWN := 0.05
+
+## Hard cap on a single gun's pellet count, so SHOTGUN/SPREAD can't balloon as
+## they level.
+const PELLET_CAP := 9
+
 ## How long a single gun pickup lasts before that layer drops off (seconds).
 const GUN_DURATION := 20.0
 ## Remaining time (seconds) at/under which the HUD should warn the player.
@@ -94,7 +107,7 @@ var GUN_IDS: Array = GUNS.keys()
 var owned: Dictionary = {}
 
 ## Timed layers per gun: id -> Array[float] of remaining seconds. Each pickup of a
-## gun pushes another 30s layer (so duplicates stack as overlapping timers); a
+## gun pushes another 20 s layer (so duplicates stack as overlapping timers); a
 ## layer drops off when it expires, lowering the gun's level, and the gun is gone
 ## once its last layer expires.
 var _stacks: Dictionary = {}
@@ -129,12 +142,18 @@ func reset() -> void:
 	guns_changed.emit()
 
 
-## Grants a gun, pushing another 30s layer (re-picking the same gun stacks an
+## Grants a gun, pushing another 20 s layer (re-picking the same gun stacks an
 ## extra overlapping layer, which levels it up: faster + more pellets). Returns
 ## the new level (= number of active layers).
 func add_gun(id: String) -> int:
 	if not GUNS.has(id):
 		return 0
+	# Weapon-slot cap: a brand-new gun beyond the cap is redirected into a level on
+	# the lowest-level owned gun, so the pickup still rewards you — deeper, not wider.
+	if not owned.has(id) and owned.size() >= MAX_GUNS:
+		var low_id := _lowest_level_owned()
+		if low_id != "":
+			id = low_id
 	var arr: Array = _stacks.get(id, [])
 	if arr.size() < MAX_LEVEL:
 		arr.append(GUN_DURATION)
@@ -152,6 +171,19 @@ func add_gun(id: String) -> int:
 		_fire_state[id] = {"cd": 0.0, "shots_left": int(GUNS[id].get("burst_count", 0))}
 	guns_changed.emit()
 	return arr.size()
+
+
+## The owned gun with the fewest active layers (ties → first found). "" if none.
+## Used to redirect an over-cap pickup into deepening your weakest gun.
+func _lowest_level_owned() -> String:
+	var best := ""
+	var best_lvl := 99999
+	for oid in owned.keys():
+		var lvl := int(owned[oid])
+		if lvl < best_lvl:
+			best_lvl = lvl
+			best = oid
+	return best
 
 
 ## Decrements every gun's layer timers, dropping expired layers (and the gun once
@@ -253,13 +285,24 @@ func roll_choices(count: int = 3) -> Array:
 			unowned.append(id)
 		elif lvl < MAX_LEVEL:
 			upgradable.append(id)
+	# At the weapon-slot cap, stop offering new guns entirely — every pick should
+	# now deepen an owned gun (the slot cap is the whole point).
+	if owned.size() >= MAX_GUNS:
+		unowned.clear()
 	unowned.shuffle()
 	upgradable.shuffle()
 
 	var picks: Array = []
-	# Lead with a new gun when possible so most level-ups expand the loadout.
-	if not unowned.is_empty():
+	# Lead choice: early on, expand the loadout with a new gun; once you own 3+ guns,
+	# bias toward DEEPENING (~60% upgrade / 40% new) so power stacks visibly instead
+	# of sprawling into ever-more weapons.
+	var lead_upgrade := owned.size() >= 3 and not upgradable.is_empty() and randf() < 0.6
+	if lead_upgrade:
+		picks.append(upgradable.pop_back())
+	elif not unowned.is_empty():
 		picks.append(unowned.pop_back())
+	elif not upgradable.is_empty():
+		picks.append(upgradable.pop_back())
 	# Fill the rest from a shuffled blend of what's left.
 	var pool: Array = unowned + upgradable
 	pool.shuffle()
@@ -323,6 +366,10 @@ func _process(delta: float) -> void:
 				st["cd"] = float(gun["cooldown"]) * speed_mult
 		else:
 			st["cd"] = float(gun["cooldown"]) * speed_mult
+		# Per-gun fire-rate floor: caps any single gun at 20 shots/s so a maxed
+		# RAPID/MINIGUN can't hose hard enough to threaten 60fps. The big burst-pause
+		# is always well above the floor, so this only ever bites the rapid cadences.
+		st["cd"] = maxf(float(st["cd"]), MIN_COOLDOWN)
 
 
 ## Fires one "tick" of a gun according to its pattern.
@@ -330,46 +377,69 @@ func _fire(id: String, gun: Dictionary) -> void:
 	var level: int = owned[id]
 	match int(gun["pattern"]):
 		Pattern.LASER:
-			# The laser is a true beam, not a pellet — instant, piercing.
-			_fire_beam(gun)
-		Pattern.SINGLE, Pattern.RAIL:
-			_spawn(gun, 0.0)
-		Pattern.NET:
+			# The laser is a true beam, not a pellet — instant, piercing. Its corridor
+			# widens +0.5 m per level, so leveling LASER means catching more lanes.
+			_fire_beam(gun, level)
+		Pattern.RAIL:
+			# Heavy piercing slug: its sweep corridor grows +0.5 m per level (base ~0.9 m)
+			# so a deep RAILGUN punches a fat lane through a column of traffic.
+			_spawn(gun, 0.0, {"hit_radius": 0.9 + 0.5 * float(level - 1)})
+		Pattern.SINGLE, Pattern.NET:
 			_spawn(gun, 0.0)
 		Pattern.MINIGUN:
-			var jitter: float = deg_to_rad(float(gun.get("spread_deg", 8.0)))
-			_spawn(gun, randf_range(-jitter, jitter))
+			# +1 parallel stream every 2 levels (2nd@L3, 3rd@L5) — depth = more lead
+			# downrange, not just a faster single line. Jitter keeps the hose feel.
+			var mjit: float = deg_to_rad(float(gun.get("spread_deg", 8.0)))
+			_fire_streams(gun, 1 + (level - 1) / 2, mjit, deg_to_rad(5.0))
+		Pattern.BURST:
+			# RAPID: same parallel-stream reward as the minigun, tight and jitter-free.
+			_fire_streams(gun, 1 + (level - 1) / 2, 0.0, deg_to_rad(3.5))
 		Pattern.SHOTGUN, Pattern.SPREAD:
-			# More pellets as the gun levels up.
-			var pellets: int = int(gun.get("pellets", 3)) + (level - 1)
+			# More pellets as the gun levels up, hard-capped so it can't balloon.
+			var pellets: int = mini(int(gun.get("pellets", 3)) + (level - 1), PELLET_CAP)
 			var spread: float = deg_to_rad(float(gun.get("spread_deg", 20.0)))
 			var start: float = -spread * 0.5
 			var stepa: float = spread / float(maxi(pellets - 1, 1))
 			for i in pellets:
 				_spawn(gun, start + stepa * float(i))
-		Pattern.BURST:
-			_spawn(gun, 0.0)
 		Pattern.MORTAR:
-			_spawn(gun, 0.0)
+			# +1 m blast radius per level, capped at +4 m, so a deep MORTAR craters
+			# a whole cluster instead of just firing more often.
+			var aoe: float = float(gun.get("aoe", 0.0)) + minf(float(level - 1), 4.0)
+			_spawn(gun, 0.0, {"aoe": aoe})
 
 	_play_shot(gun)
 
 
+## Fires [param streams] parallel shots in a tight fan (RAPID/MINIGUN per-level
+## reward). [param jitter] adds per-shot random spread on top (minigun hose feel).
+func _fire_streams(gun: Dictionary, streams: int, jitter: float, fan_step: float) -> void:
+	if streams <= 1:
+		_spawn(gun, randf_range(-jitter, jitter) if jitter > 0.0 else 0.0)
+		return
+	var start := -fan_step * float(streams - 1) * 0.5
+	for i in streams:
+		var ja := randf_range(-jitter, jitter) if jitter > 0.0 else 0.0
+		_spawn(gun, start + fan_step * float(i) + ja)
+
+
 ## Instantiates a projectile at the muzzle, yawed by [param angle_y] radians, and
 ## configures it from the gun definition.
-func _spawn(gun: Dictionary, angle_y: float) -> void:
+func _spawn(gun: Dictionary, angle_y: float, overrides: Dictionary = {}) -> void:
 	if _projectile_scene == null:
 		return
 	var proj: Node3D = _projectile_scene.instantiate()
 	proj.global_transform = _muzzle.global_transform
 	proj.rotate_y(angle_y)
-	# Behavior params (Projectile reads these in _ready).
+	# Behavior params (Projectile reads these in _ready). `overrides` carries the
+	# per-level boosts (MORTAR aoe, RAILGUN hit_radius) so the const GUNS dict stays
+	# the base recipe.
 	if "speed" in proj:
 		proj.speed = float(gun.get("speed", 70.0))
 	if "piercing" in proj:
 		proj.piercing = bool(gun.get("piercing", false))
 	if "aoe_radius" in proj:
-		proj.aoe_radius = float(gun.get("aoe", 0.0))
+		proj.aoe_radius = float(overrides.get("aoe", gun.get("aoe", 0.0)))
 	if "lob_gravity" in proj:
 		proj.lob_gravity = float(gun.get("lob_gravity", 0.0))
 	if "lob_vy" in proj:
@@ -391,6 +461,11 @@ func _spawn(gun: Dictionary, angle_y: float) -> void:
 	else:
 		proj.scale = Vector3.ONE * float(gun.get("scale", 1.0))
 
+	# Per-level sweep-corridor boost (RAILGUN). Applied after the width/scale block
+	# so it overrides the default 0.9 m corridor without touching the visual scale.
+	if overrides.has("hit_radius") and "hit_radius" in proj:
+		proj.hit_radius = float(overrides["hit_radius"])
+
 	var parent := get_tree().current_scene
 	if parent:
 		parent.add_child(proj)
@@ -399,13 +474,14 @@ func _spawn(gun: Dictionary, angle_y: float) -> void:
 ## Fires the laser as an instant beam: crumples every car in a thin corridor down
 ## the muzzle's forward axis and flashes a fading beam mesh. Cheap and iOS-safe
 ## (no per-frame projectile, no shader).
-func _fire_beam(gun: Dictionary) -> void:
+func _fire_beam(gun: Dictionary, level: int = 1) -> void:
 	if _muzzle == null or not is_instance_valid(_muzzle):
 		return
 	var origin: Vector3 = _muzzle.global_position
 	var dir: Vector3 = -_muzzle.global_transform.basis.z.normalized()
 	var length := 110.0
-	var radius := 1.5
+	# Corridor widens +0.5 m per level so a deep LASER scythes more lanes at once.
+	var radius := 1.5 + 0.5 * float(level - 1)
 	for car in get_tree().get_nodes_in_group("cars"):
 		var c := car as Node3D
 		if c == null or not c.has_method("crumple"):
