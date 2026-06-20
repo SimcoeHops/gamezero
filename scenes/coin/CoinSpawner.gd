@@ -32,7 +32,9 @@ func _on_game_state_changed(new_state: int) -> void:
 
 
 func _reschedule() -> void:
-	_timer.wait_time = randf_range(interval_min, interval_max)
+	# Hot flow-state runs spit out coins more often — a clean streak feels lucrative.
+	var gap := randf_range(interval_min, interval_max) * (1.0 - 0.4 * GameManager.flow_heat)
+	_timer.wait_time = maxf(gap, 0.4)
 	_timer.start()
 
 

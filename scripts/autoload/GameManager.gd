@@ -124,6 +124,16 @@ var biome_log: Array = []
 var combo: int = 1
 var _combo_timer: float = 0.0
 
+## --- Flow-state "heat" (0..1) ---
+## The longer the player survives WITHOUT crashing, the hotter the world gets:
+## music swells, the screen edges glow warm, the grade pushes warmer, and coin /
+## gantry density rises. A crash cools it instantly. A hot greed combo heats it
+## faster, so greedy lane-threading literally turns up the temperature. Read live
+## by AudioManager, HUD (shader), Main (grade), and the coin/gantry spawners.
+const FLOW_RAMP := 1.0 / 70.0          ## base seconds-to-max of clean survival
+const FLOW_COMBO_GAIN := 0.004         ## extra heat/sec per combo tier above ×1
+var flow_heat: float = 0.0
+
 ## --- Run level / XP (Vampire-Survivors "level up, pick a weapon") ---
 ## Dodges are XP. Filling the bar triggers a level-up card pick. Each level costs
 ## a little more than the last so the cadence stretches as the run gets deeper.
@@ -167,6 +177,9 @@ func _process(delta: float) -> void:
 			if _combo_timer <= 0.0:
 				combo = 1
 				combo_changed.emit(combo)
+		# Heat creeps up the longer this run stays clean; a hot combo stokes it.
+		var rate := FLOW_RAMP + FLOW_COMBO_GAIN * float(combo - 1)
+		flow_heat = minf(flow_heat + rate * delta, 1.0)
 
 
 ## Transition to the PLAYING state and reset all run data.
@@ -176,6 +189,7 @@ func start_game() -> void:
 	highway_speed = 15.0
 	combo = 1
 	_combo_timer = 0.0
+	flow_heat = 0.0
 	run_level = 1
 	level_xp = 0
 	level_xp_needed = LEVEL_XP_BASE
@@ -261,6 +275,7 @@ func do_continue() -> void:
 	# A crash you survived still cools the greed meter — the run resumes at ×1.
 	combo = 1
 	_combo_timer = 0.0
+	flow_heat = 0.0
 	combo_changed.emit(combo)
 	coins_changed.emit(coins)
 	_save_progress()
@@ -330,6 +345,12 @@ func _on_near_miss() -> void:
 	_combo_timer = COMBO_WINDOW
 	combo_changed.emit(combo)
 	add_points(NEAR_MISS_POINTS)
+
+
+## Snuffs the flow-state heat — called the instant the player crashes so the world
+## visibly cools (music, glow, grade, density all drop back). Survival re-earns it.
+func cool_flow() -> void:
+	flow_heat = 0.0
 
 
 ## Fraction (0..1) of the combo "heat" remaining before it cools back to ×1 — the

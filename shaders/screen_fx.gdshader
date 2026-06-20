@@ -13,6 +13,10 @@ uniform vec4 streak_color : source_color = vec4(0.75, 0.88, 1.0, 1.0);
 // shockwave ring plus a chromatic-aberration-flavoured edge fringe (no screen
 // read — cheap on the mobile renderer).
 uniform float impact_pulse : hint_range(0.0, 1.0) = 0.0;
+// Flow-state "heat": 0 cold → 1 on a long clean streak. Glows the screen edges
+// warm and softly pulses, so a hot run literally feels hot. Cheap (no screen read).
+uniform float flow_heat : hint_range(0.0, 1.0) = 0.0;
+uniform vec4 flow_color : source_color = vec4(1.0, 0.42, 0.10, 1.0);
 
 float hash(float n) {
 	return fract(sin(n) * 43758.5453);
@@ -36,6 +40,17 @@ void fragment() {
 
 	vec3 col = vignette_color.rgb * vig + streak_color.rgb * streak;
 	float alpha = clamp(vig + streak, 0.0, 1.0);
+
+	// Flow-state heat: a warm glow creeps in from the screen edges and breathes
+	// faster as the streak gets hotter — an ambient "you're on fire" cue that
+	// never covers the centre where the action reads.
+	if (flow_heat > 0.001) {
+		float h = smoothstep(0.08, 1.0, flow_heat);
+		float pulse = 0.85 + 0.15 * sin(TIME * (2.0 + 4.0 * h));
+		float warm = smoothstep(0.30, 1.15, r) * h * pulse;
+		col += flow_color.rgb * warm * 0.55;
+		alpha = clamp(alpha + warm * 0.55, 0.0, 1.0);
+	}
 
 	// Crash impact overlay: a bright shockwave ring sweeps outward as the pulse
 	// fades, with a warm/cool chromatic fringe biting in from the edges.

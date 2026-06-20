@@ -15,11 +15,6 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
      lowest cluster is #1 Core fun, #4 Visual polish, #8 Difficulty — all at 3.
      These four items attack those. See the iter-8 JOURNAL scorecard. -->
 
-- [ ] **Flow-state escalation** (Core fun #1): the longer you survive WITHOUT a hit, the
-      hotter the world gets — tie a clean-streak timer to (a) music intensity / engine drone,
-      (b) a creeping color-grade warmth or vignette, (c) gantry/coin density. Make a hot streak
-      *feel* hot; a crash visibly cools it. Builds on the greed multiplier above.
-
 - [ ] **Per-biome environmental particles & atmosphere** (Visual polish #4): the single biggest
       "asset-flip → art-directed" jump. Add a speed-reactive GPUParticles3D field per biome —
       Downtown paper/litter, Countryside leaves/pollen, Industrial embers/smoke, Neon glowing
@@ -46,8 +41,9 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       draining heat bar, hot→white tiers, rising whoosh pitch).
 - [ ] A pursuer/boss beat: an occasional chasing hazard (cop, wrecking truck) that forces
       forward pressure and creates memorable run peaks.
-- [ ] Flow-state escalation: the longer you survive cleanly, the more the world reacts
-      (music intensity, color, spawn density) — make a hot streak *feel* hot.
+- [x] Flow-state escalation — DONE iter 10 (see Done): clean-survival `flow_heat` (0..1, faster
+      while a greed combo is hot) drives music swell + footstep energy, a warm screen-edge glow,
+      a brighter/punchier grade, and tighter coin/gantry density; a crash snuffs it.
 - [ ] Run-modifier variants selectable at the front-end (low gravity, double speed, one-gun,
       bullet-hell) for replay variety.
 
@@ -123,6 +119,36 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Flow-state escalation** (2026-06-19, iter 10) — the top NOW item and the logged follow-up
+      to iter 9's greed meter (#1 Core fun). The greed combo was a short-term, per-near-miss spike;
+      this adds the *long-term* layer the runner was missing: a clean run now visibly **heats up the
+      whole world**, and a crash cools it. New central `GameManager.flow_heat` (0..1) ramps with
+      clean survival time (`FLOW_RAMP` ≈ reach max in ~70s) **faster while a greed combo is hot**
+      (`FLOW_COMBO_GAIN` per tier — greedy threading literally turns up the temperature, ~22s to max
+      at held ×9), resets to 0 in `start_game`/`do_continue` and snaps to 0 via `cool_flow()` the
+      instant the player crashes (called from `Main._on_player_crashed`). Consumers, all reading
+      `flow_heat` live: **audio** — music swells from −3 dB cold to full hot (`_update_music_dynamics`)
+      + footsteps quicken/brighten/loud­en (`_process_footsteps`); **visual** — a new `flow_heat`
+      uniform in `screen_fx.gdshader` glows the screen *edges* warm (centre stays clear — readability
+      pillar) and breathes faster as it climbs, driven from `HUD._process` via an eased `_flow_display`
+      (fast cool); plus a subtle 3D grade nudge (brightness/contrast up with heat in `Main._process` —
+      saturation left to Bullet Time, no conflict); **density** — coin trails spawn up to ~40% more
+      often (`CoinSpawner._reschedule`) and gantries pack ~30% closer (`GantrySpawner._arm_next`) when
+      hot. Files: `scripts/autoload/GameManager.gd`, `scripts/autoload/AudioManager.gd`,
+      `shaders/screen_fx.gdshader`, `scenes/ui/HUD.gd`, `scenes/main/Main.gd`,
+      `scenes/coin/CoinSpawner.gd`, `scenes/highway/GantrySpawner.gd`. Verified: clean headless boot;
+      exercised the full chain windowed via the `Main._ready` swap — base ramp 0.0144/s, held-combo-9
+      ramp 0.0464/s (matches FLOW_RAMP + 8·FLOW_COMBO_GAIN), shader uniform eased toward target, grade
+      brightness/contrast rose above base, coin wait dropped to ~1.77s (base 2.2–4.0), gantry spacing
+      to ~61 m (base ~105), `cool_flow()` → 0; swap restored + re-verified clean.
+      - [ ] Human playtest: the *feel* of the ~70s ramp (too slow/fast?), the warm-glow intensity
+            (0.55 mix — could be too strong at full heat or invisible early; tune the smoothstep deadzone),
+            whether the music swell reads or is too subtle, and if the tighter density makes hot runs
+            feel exciting vs cluttered (readability pillar). Tune `FLOW_RAMP`/`FLOW_COMBO_GAIN` in
+            GameManager + the per-consumer gains.
+      - [ ] Follow-up: a stronger *audio* heat cue than a volume swell — a low-pass/high-shelf opening
+            up on the Music bus as flow climbs (adaptive-music technique; skipped this pass to avoid
+            blind mix risk). Also consider a brief "FLOW" / heat-tier flourish on the HUD at max heat.
 - [x] **Visible greed / risk multiplier** (2026-06-19, iter 9) — attacks #1 Core fun (the
       top NOW item). The near-miss combo (max ×9) was tracked in GameManager but shown only as a
       tiny "COMBO x2" label — the central greed/risk hook was nearly invisible. Built a proper

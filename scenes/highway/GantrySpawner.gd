@@ -62,7 +62,10 @@ func _process(delta: float) -> void:
 
 
 func _arm_next() -> void:
-	_next_at = spawn_distance + randf_range(-spawn_distance_jitter, spawn_distance_jitter)
+	# A hot flow-state packs the overhead gantries closer together so a long clean
+	# streak feels busier and faster, then eases back out as the heat cools.
+	var base := spawn_distance + randf_range(-spawn_distance_jitter, spawn_distance_jitter)
+	_next_at = maxf(base * (1.0 - 0.3 * GameManager.flow_heat), 35.0)
 
 
 func _spawn() -> void:

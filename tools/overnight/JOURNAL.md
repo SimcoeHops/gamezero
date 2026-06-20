@@ -483,3 +483,61 @@ pitch is exciting vs shrill at ×9 (tune the `+0.085/tier` bump in `AudioManager
 The combo→×1 reset on a paid continue is new behavior (intended). Logical follow-up, already the
 next NOW item: **flow-state escalation** — tie this hot streak to music/grade/spawn density so a
 hot combo feels hot across the whole world, not just on the HUD.
+
+---
+
+## 2026-06-19 — Flow-state escalation (iter 10, Build mode)
+
+**What & why:** Shipped the top NOW item — the explicit follow-up to iter 9's greed meter and
+the #1-priority "Core fun" lever from the iter-8 audit. The greed *combo* is a short-term, per-
+near-miss spike (3s window). What the runner was missing is the *long-term* escalation that
+turns "I'm doing well" into a felt, mounting tension: the longer you survive WITHOUT crashing,
+the hotter the whole world gets, and a crash visibly cools it. That's the flow-state loop.
+
+**How it works — one central value, many consumers:**
+- `GameManager.flow_heat` (0..1): ramps every PLAYING frame by `FLOW_RAMP` (1/70 → ~70s of pure
+  clean survival to max) **plus** `FLOW_COMBO_GAIN · (combo−1)` — a hot greed combo stokes the
+  heat *faster* (held ×9 reaches max in ~22s), so greedy lane-threading literally turns up the
+  temperature ("builds on the greed multiplier" per the backlog). Reset to 0 in `start_game` and
+  `do_continue`; snapped to 0 by a new `cool_flow()` called from `Main._on_player_crashed` the
+  instant the player crashes.
+- **Audio** (`AudioManager`): `_update_music_dynamics` lerps the music target from −3 dB (cold)
+  to 0 dB (hot) so a clean run literally sounds bigger; `_process_footsteps` quickens/brightens/
+  loudens the stride and shrinks the step interval with heat ("in the zone" sprinting). (The old
+  procedural engine drone is dead code — `_setup_engine`/`_fill_engine` are never called since
+  footsteps replaced it — so I tied audio to music + footsteps, not the drone.)
+- **Visual** (`screen_fx.gdshader` + `HUD` + `Main`): a new `flow_heat` shader uniform adds a
+  warm glow that creeps in from the screen **edges** (centre stays clear — the readability
+  pillar) and breathes faster as it climbs; driven from `HUD._process` via an eased `_flow_display`
+  (`move_toward`, fast cool on a crash, also reset/cleared in `HUD.reset`). Plus a subtle 3D grade
+  nudge in `Main._process` (brightness 1.02→1.07, contrast 1.12→1.18 with heat) — saturation is
+  left to Bullet Time so there's no conflict.
+- **Density**: `CoinSpawner._reschedule` shortens the trail gap up to ~40% (floor 0.4s) and
+  `GantrySpawner._arm_next` packs gantries ~30% closer (floor 35 m) when hot — a clean streak
+  feels busier and more lucrative, then eases back out as it cools.
+
+**Files touched:** `scripts/autoload/GameManager.gd`, `scripts/autoload/AudioManager.gd`,
+`shaders/screen_fx.gdshader`, `scenes/ui/HUD.gd`, `scenes/main/Main.gd`,
+`scenes/coin/CoinSpawner.gd`, `scenes/highway/GantrySpawner.gd`, `BACKLOG.md`, this journal.
+
+**Verified (per CLAUDE.md):** Clean headless boot (no `error|script|parse|invalid|shader`).
+Exercised the whole chain windowed (real renderer compiles the shader; real-time timers) via the
+documented `Main._ready` swap (`_flow_test`): base clean ramp **0.0144/s**; with a held ×9 combo
+**0.0464/s** (= FLOW_RAMP 0.0143 + 8·FLOW_COMBO_GAIN 0.004, confirming greed accelerates heat);
+the shader `flow_heat` uniform eased toward its target; `adjustment_brightness`/`contrast` rose
+above base; coin wait dropped to **1.77s** (base 2.2–4.0) and gantry `next_at` to **61 m** (base
+~105) at flow 1.0; `cool_flow()` → **0.0000**. (First test pass exposed only that I forgot to hold
+`_combo_timer`, so the combo fell back to ×1 — existing behaviour, not a feature bug; re-ran with
+the timer held to confirm the accelerated ramp.) Restored `Main.gd` from `/tmp/Main.gd.bak` (grep
+confirms `_flow_test`/`FLOWTEST` gone, `_front_end.begin()` back; the `cool_flow` + grade edits
+intentionally retained), re-ran a clean headless boot.
+
+**Unverified / risk — human should playtest:** no GPU/visual confirmation of the *look/feel*.
+Key tuning knobs: the **~70s ramp** (does a typical run get hot enough to feel it? `FLOW_RAMP`),
+the **warm-glow intensity** (0.55 mix + `smoothstep(0.08,1.0)` deadzone — could be too strong at
+max heat or invisible early), whether the **−3→0 dB music swell** is perceptible or too subtle,
+and whether the **tighter coin/gantry density** makes a hot run feel exciting vs cluttered (the
+readability pillar — gantries at 61 m might feel busy). All gains are small/independent so any one
+can be dialed without touching the others. Logged follow-up: a real adaptive-music **filter sweep**
+(low-pass opening up on the Music bus with heat) would be a stronger audio cue than a volume swell
+— skipped this pass to avoid blind mix risk on a no-speakers iteration.

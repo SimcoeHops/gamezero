@@ -46,6 +46,8 @@ const XP_BAR_SIZE := Vector2(420.0, 12.0)
 var _xp_display: float = 0.0
 
 var _display_score: float = 0.0
+## Smoothed flow-state heat driving the warm edge-glow shader uniform.
+var _flow_display: float = 0.0
 
 
 func _ready() -> void:
@@ -144,6 +146,10 @@ func _process(delta: float) -> void:
 			var t := clampf((GameManager.highway_speed - 25.0) / 60.0, 0.0, 1.0)
 			_fx_mat.set_shader_parameter("speed_intensity", t)
 			_fx_mat.set_shader_parameter("impact_pulse", Juice.impact_pulse())
+			# Ease the warm flow glow toward the live heat (fast cool on a crash).
+			_flow_display = move_toward(_flow_display, GameManager.flow_heat,
+				maxf(absf(GameManager.flow_heat - _flow_display) * 3.0, 0.4) * delta)
+			_fx_mat.set_shader_parameter("flow_heat", _flow_display)
 		# Refresh every frame so the per-power-up countdowns tick and the
 		# about-to-expire warning blinks.
 		_refresh_powerups()
@@ -698,6 +704,9 @@ func _build_screen_fx() -> void:
 ## Resets the HUD for a new game.
 func reset() -> void:
 	_display_score = 0.0
+	_flow_display = 0.0
+	if _fx_mat:
+		_fx_mat.set_shader_parameter("flow_heat", 0.0)
 	if _score_label:
 		_score_label.text = "0"
 	for icon in _ability_icons.values():

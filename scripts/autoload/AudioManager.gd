@@ -99,10 +99,13 @@ func _process_footsteps(delta: float) -> void:
 		return
 	_step_timer -= delta
 	if _step_timer <= 0.0:
-		_play(_footsteps, 0.92, 1.12, -9.0)
-		# Step interval shrinks as the highway speeds up.
+		# As the flow-state heats up, the stride gets a touch quicker, higher and
+		# louder — an "in the zone, sprinting hard" cue that rides the hot streak.
+		var flow: float = GameManager.flow_heat
+		_play(_footsteps, 0.92 + flow * 0.12, 1.12 + flow * 0.12, -9.0 + flow * 2.0)
+		# Step interval shrinks as the highway speeds up (and a little more when hot).
 		var spd: float = GameManager.highway_speed
-		_step_timer = clampf(0.42 - (spd - 15.0) * 0.0045, 0.12, 0.5)
+		_step_timer = clampf((0.42 - (spd - 15.0) * 0.0045) * (1.0 - flow * 0.18), 0.1, 0.5)
 
 
 # ---------------------------------------------------------------- buses
@@ -513,5 +516,8 @@ func _update_music_dynamics() -> void:
 	if not _real_tracks_active or _music == null:
 		return
 	var playing := GameManager.current_state == GameManager.GameState.PLAYING
-	_music_target_db = 0.0 if playing else -7.0
+	# The music lifts as the flow-state heats up: a cold start sits a touch ducked
+	# and swells to full as a clean streak builds — a hot run literally sounds
+	# bigger. Cooling on a crash lets it settle back.
+	_music_target_db = lerpf(-3.0, 0.0, GameManager.flow_heat) if playing else -7.0
 	_music.volume_db = lerpf(_music.volume_db, _music_target_db, 0.04)
