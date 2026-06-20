@@ -16,6 +16,18 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
      lifting it toward 3), then #8 Difficulty and #9 Performance (both 3). These
      items attack those, plus a #1/#3 design risk to decide. See iter-12 JOURNAL. -->
 
+- [ ] **[HUMAN / HARNESS — loop cannot self-do: `tools/overnight/` is off-limits per AGENT_BRIEF]
+      Archive old JOURNAL entries to cut per-iteration token cost.** `tools/overnight/JOURNAL.md`
+      is ~51 KB and grows every iteration, and the brief makes EVERY fresh session re-read it in
+      full ([AGENT_BRIEF.md] "Read first") — it's the single largest and fastest-growing recurring
+      input. Split it: move all but the **last ~3–4 iterations** into a new
+      `tools/overnight/JOURNAL.archive.md`, but **keep every deep-audit scorecard** (the iter
+      4/8/12/… rubric entries) in the live `JOURNAL.md` since those are the running quality signal.
+      No brief change needed: the brief reads `JOURNAL.md` by name, so the archive is automatically
+      NOT auto-read. Net effect: every subsequent iteration reads a much smaller journal for the
+      same state. Do this from a human/maintenance session (NOT a loop iteration). Re-run as
+      maintenance whenever the live journal creeps back up.
+
 - [ ] **Object pooling for the hot spawners** (Performance #9): cars, coins, projectiles, and
       crash debris all instantiate+free every spawn — under worst-case carnage (MINIGUN + MORTAR
       AOE + many cars) this churns allocations and risks frame hitches, the exact thing the
@@ -29,12 +41,40 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       decays to neutral), mapped to `difficulty_pressure()`; CarSpawner nudges spawn interval
       (±~12%) and shaves/adds one car at the extremes — dodgeable-gap guarantee preserved.
 
-- [ ] **DECIDE: timed guns vs. permanent loadout** (Core fun #1 / power-fantasy pillar): guns
-      now expire after 20 s (GunManager `GUN_DURATION`, stacking layers). This fights the
-      "build-a-loadout, visible power growth" pillar — the arsenal constantly evaporates. Either
-      (a) make picks permanent and lean on level/MAX_LEVEL for the cap, or (b) keep timed but
-      make the decay *legible* (HUD countdown rings already warn?) and balance gates around it.
-      Human decision needed; then implement + rebalance. High leverage on the core hook.
+- [ ] **Gun scaling: tame runaway layering (LOCKED SPEC — implement, do NOT re-decide)** (Core
+      fun #1 / power-fantasy pillar): **The human has made this design call — commit to the
+      Vampire-Survivors direction: escalating power IS the core fun, depth-over-breadth. Keep the
+      timed stacking model; do NOT make it a permanent static loadout. Just bound the runaway.**
+      Diagnosis (verified against `GunManager.gd`): per-gun leveling is already tame and bounded
+      (fire rate `pow(0.86, level-1)` → 1.83× at L5; pellets +1/level on SHOTGUN/SPREAD only,
+      hard-capped at `MAX_LEVEL = 5`). The actual "totally insane" runaway is **uncapped
+      simultaneous weapons** — all 9 guns can be owned and ALL fire at once (~95 projectiles/s +
+      hitscan laser + AOE mortars, MINIGUN alone ~30/s), and `roll_choices` actively pushes sprawl
+      ("lead with a new gun") because leveling is too thin to compete with collecting. Fix = cap
+      breadth, reward depth. Implement exactly these (keep `MAX_LEVEL = 5` and the existing
+      geometric `pow(0.86, level-1)` rate curve):
+      1. **`MAX_GUNS := 6` weapon-slot cap** (VS's own number). In `add_gun`, when the id is new
+         and `owned.size() >= MAX_GUNS`, redirect the pickup into a level on the **lowest-level
+         owned gun** instead of refusing it. In `roll_choices`, once at the cap stop offering
+         unowned guns (offer `upgradable` only).
+      2. **`MIN_COOLDOWN := 0.05` per-gun fire-rate floor** (20 shots/s ceiling): clamp
+         `st["cd"] = maxf(st["cd"], MIN_COOLDOWN)` right after computing it in `_process`. Kills
+         the MINIGUN/RAPID hose and protects the 60fps spell.
+      3. **Make leveling powerful but bounded so depth beats breadth** — give the single-projectile
+         guns a real per-level reward (today they get only the rate bump): RAPID/MINIGUN gain
+         **+1 parallel stream every 2 levels** (2nd at L3, 3rd at L5); RAILGUN/LASER gain **+0.5 m
+         corridor/pierce radius per level**; MORTAR gains **+1.0 m AOE per level, capped at +4 m**.
+         Cap pellet totals at **`PELLET_CAP := 9`** (`pellets = min(base + (level-1), PELLET_CAP)`)
+         so SHOTGUN/SPREAD can't balloon.
+      4. **Bias the roller toward depth**: once you own **>= 3** guns, lead with an *upgrade* of an
+         owned gun rather than a new one (~**60% upgrade / 40% new**).
+      Also **fix the stale code comments** in `GunManager.gd` that say "30s layer" — the constant is
+      `GUN_DURATION := 20.0`; the comments on `_stacks` (~line 97) and `add_gun` (~line 132) should
+      say **20 s**. Rebalance + verify headless per CLAUDE.md (exercise a stacked loadout via the
+      `Main._ready` swap; confirm the slot cap redirects to the lowest gun, the cooldown floor holds,
+      and worst-case projectile rate drops to ~55–60/s). High leverage on the core hook. Smallest
+      viable subset if time is short: items **1 + 2** alone bound the runaway and protect framerate;
+      3 + 4 are the make-it-feel-great polish and can be a follow-up iteration.
 
 - [ ] **Tutorial polish v2 + bullet-time/weapon teaching** (follow-up to iter-12 onboarding):
       the first-run tutorial teaches move/jump/stomp; extend the same pattern to the bullet-time
@@ -42,10 +82,10 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       tiny persistent control-glyph legend for the first ~20 s. Tune prompt placement/timing
       once playtested (see iter-12 JOURNAL risks).
 
-- [ ] **Player rim/back light + stronger per-biome grade** (Visual polish #4): a back/rim light
-      keyed to the biome accent separates the runner from the road and unifies the Kenney kits
-      under one art-direction; push the per-biome color grade (currently only fog/ambient/sun)
-      toward distinct LUT-like tints so each biome reads as a designed place, not a recolor.
+- [x] **Player rim/back light + stronger per-biome grade** — DONE iter 15 (see Done): code-built
+      biome-keyed `RimLight` OmniLight3D on the runner (breathes with flow_heat) + a per-biome 1D
+      color-correction LUT (duotone tone-curve) and resting saturation that cross-fade on biome
+      change. Each biome got a `rim`/`grade_lo`/`grade_hi`/`sat` recipe.
 
 - [ ] **Daily challenge + missions/goals** (Progression #6): 3 rotating goals
       ("near-miss 20 cars", "reach Neon", "own 4 guns at once") with a coin reward + a
@@ -141,6 +181,43 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Player rim/back light + stronger per-biome grade** (2026-06-19, iter 15) — attacks
+      #4 Visual polish (the "asset-flip → art-directed" lever). Before, only fog/ambient/sun
+      changed per biome and the runner had no separation light. Now TWO additions, both
+      biome-keyed and cross-fading: (1) a code-built `RimLight` OmniLight3D on the runner
+      (`PlayerController._ready`, matching the `_star_light`/`GunHold` pattern) sitting
+      above-and-ahead (`(0, 2.3, -1.7)`, range 5.5) so it back-lights his camera-facing
+      silhouette — separating him from the dark road and tinting him to the biome accent. It
+      **breathes brighter with `flow_heat`** (`_rim_base_energy` × `(1 + heat*0.9)` × subtle
+      sin breathe) so a hot streak makes him glow; the star aura takes over while invincible
+      (rim drive gated on `not _star_active`). New `set_rim_color(color, instant)` is tweened
+      by Main on theme change (3 s, matching fog/ambient). (2) A **per-biome 1D color-correction
+      LUT** (`GradientTexture1D` duotone tone-curve: shadows→`grade_lo`, highlights→`grade_hi`,
+      applied per channel) + a **resting saturation** per biome — both cross-fade in
+      `Main._process` by lerping the LUT endpoint colors and the saturation toward the biome
+      targets, giving each biome a genuine "designed" grade instead of a recolor. Bullet Time now
+      restores to the biome's resting saturation (not a hardcoded 1.22) so the grade survives the
+      dip. Each `THEMES` entry gained `rim`/`grade_lo`/`grade_hi`/`sat`: Downtown cool-blue rim +
+      cool nocturnal grade (sat 1.18), Countryside warm sun-green (1.08), Industrial hot-amber +
+      desaturated grimy (0.95), Neon hot-pink + punchy magenta + lifted sat (1.35). Files:
+      `scenes/highway/Highway.gd` (4 theme recipes), `scenes/player/PlayerController.gd` (rim
+      light build + flow pulse + `set_rim_color`), `scenes/main/Main.gd` (`_build_grade_lut`,
+      grade/sat crossfade in `_process`, rim+grade targets in `_apply_theme`, BT saturation
+      restore). Verified (per CLAUDE.md): clean headless boot, no `error|script|parse|invalid|
+      shader`. Exercised via the documented `Main._ready` swap (windowed, so `_process` + the LUT
+      run for real): boot grade = Downtown (lo (0.04,0.05,0.12), sat 1.18), `RimLight` built with
+      Downtown color (0.45,0.7,1.0) energy ~1.78, `adjustment_color_correction` set; forced a
+      crossfade to Neon → +1 s later grade/sat/rim all easing toward the Neon targets
+      (lo→(0.076,0.032,0.132), sat 1.18→1.28→1.35, rim→(0.635,0.599,0.983)) with zero errors.
+      Swap restored from `/tmp/Main.gd.bak` (GRADETEST gone, `_front_end.begin()` back) +
+      re-verified a clean headless boot.
+      - [ ] Human playtest (GPU look unverified — the whole point is visual): rim energy/range
+            (1.7 base, range 5.5 — does it separate the runner without a hot blob on the road or
+            blowing out the skin?), the LUT grade strength per biome (lifted blacks via `grade_lo`
+            vs the existing `adjustment_contrast` 1.12 — does Industrial read grimy not muddy, Neon
+            punchy not garish?), and the 3 s crossfade read on a biome change. Tune the per-theme
+            `rim`/`grade_lo`/`grade_hi`/`sat` in Highway.gd + `_rim_base_energy`/pulse in
+            PlayerController + the `delta*0.9` crossfade rate in Main.
 - [x] **Dynamic difficulty — light, bounded rubber-banding** (2026-06-19, iter 14) — attacks
       the joint-low #8 Difficulty (was 3): the spawn/speed ramp was fully open-loop (pure
       `time_elapsed`), so a struggling player and a flow-state expert got identical traffic. Now
