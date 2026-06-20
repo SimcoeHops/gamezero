@@ -169,6 +169,13 @@ var _star_light: OmniLight3D = null
 var _star_active: bool = false
 var _star_t: float = 0.0
 
+# Biome-keyed rim/back light: a colored pool above-and-ahead of the runner that
+# back-lights his silhouette toward the camera, separating him from the road and
+# unifying the Kenney kits under one art-directed accent. Brightens with flow_heat.
+var _rim_light: OmniLight3D = null
+var _rim_base_energy: float = 1.7
+var _rim_t: float = 0.0
+
 
 func _ready() -> void:
 	# Configure ability timers
@@ -196,6 +203,22 @@ func _ready() -> void:
 	_star_light.position = Vector3(0.0, 1.0, 0.0)
 	_star_light.visible = false
 	add_child(_star_light)
+
+	# Biome rim/back light: sits above and slightly AHEAD (-Z) of the runner so it
+	# grazes the camera-facing silhouette as a rim. Modest range/energy so it tints
+	# and separates rather than blowing out the runner. Color set per biome by Main.
+	_rim_light = OmniLight3D.new()
+	_rim_light.name = "RimLight"
+	_rim_light.omni_range = 5.5
+	_rim_light.omni_attenuation = 1.6
+	_rim_light.light_energy = _rim_base_energy
+	_rim_light.light_specular = 0.9
+	_rim_light.light_color = Color(0.55, 0.75, 1.0)
+	_rim_light.position = Vector3(0.0, 2.3, -1.7)
+	# Don't let the rim cast shadows (it's a cosmetic accent, and shadow-casting a
+	# light this close to the runner would just self-shadow him muddily).
+	_rim_light.shadow_enabled = false
+	add_child(_rim_light)
 
 	_flair_noise.frequency = 1.0
 	_flair_noise.seed = randi()
@@ -777,6 +800,16 @@ func _process(delta: float) -> void:
 	if _star_active:
 		_update_star_fx(delta)
 
+	# Rim light breathes brighter as the clean-run flow heat climbs, so a hot
+	# streak makes the runner visibly glow. (The star aura owns the light while
+	# invincible, so only drive the rim otherwise.)
+	if _rim_light and not _star_active:
+		_rim_t += delta
+		var heat: float = GameManager.flow_heat
+		var breathe := 1.0 + 0.06 * sin(_rim_t * 3.0)
+		var target := _rim_base_energy * (1.0 + heat * 0.9) * breathe
+		_rim_light.light_energy = lerpf(_rim_light.light_energy, target, clampf(delta * 4.0, 0.0, 1.0))
+
 
 ## Strong, unmistakable invincibility feedback: a fast-cycling rainbow aura on
 ## the player plus an emissive shimmer on the runner's body.
@@ -810,6 +843,18 @@ func _on_star_ended() -> void:
 		_star_light.light_energy = 0.0
 	if _skin_mat:
 		_skin_mat.emission_enabled = false
+
+
+## Sets the biome-keyed rim/back light color (called by Main on theme change).
+## Cross-fades unless [param instant], matching the world fog/ambient fade.
+func set_rim_color(color: Color, instant: bool = false) -> void:
+	if _rim_light == null:
+		return
+	if instant:
+		_rim_light.light_color = color
+		return
+	var tw := create_tween()
+	tw.tween_property(_rim_light, "light_color", color, 3.0)
 
 
 ## Starts a jump and arms the variable-height hold window.

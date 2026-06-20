@@ -29,6 +29,20 @@ var _camera_roll: float = 0.0
 var _biome_particles: GPUParticles3D
 var _tutorial: CanvasLayer
 
+# Per-biome color grade: a 1D color-correction LUT (duotone tone-curve) that
+# cross-fades on biome change, giving each biome a distinct "designed" tint
+# instead of only fog/ambient recolor. Endpoints lerp toward the theme targets.
+var _grade_gradient: Gradient
+var _grade_lut: GradientTexture1D
+var _grade_lo: Color = Color(0.04, 0.05, 0.12)
+var _grade_hi: Color = Color(0.95, 0.97, 1.0)
+var _grade_lo_tgt: Color = Color(0.04, 0.05, 0.12)
+var _grade_hi_tgt: Color = Color(0.95, 0.97, 1.0)
+# Per-biome "resting" saturation (Bullet Time temporarily overrides, then restores here).
+var _biome_saturation: float = 1.22
+var _biome_saturation_tgt: float = 1.22
+var _bullet_time_active: bool = false
+
 
 func _ready() -> void:
 	if _camera:
@@ -75,6 +89,9 @@ func _ready() -> void:
 	if _tutorial.has_method("set_player"):
 		_tutorial.set_player(_player)
 
+	# Build the per-biome color-correction LUT and attach it to the environment.
+	_build_grade_lut()
+
 	if _highway and _highway.has_signal("theme_changed"):
 		_highway.theme_changed.connect(_on_theme_changed)
 		if _highway.has_method("get_current_theme"):
@@ -113,6 +130,24 @@ func _process(delta: float) -> void:
 		var f := GameManager.flow_heat
 		env.adjustment_brightness = lerpf(env.adjustment_brightness, 1.02 + f * 0.05, clampf(delta * 2.0, 0.0, 1.0))
 		env.adjustment_contrast = lerpf(env.adjustment_contrast, 1.12 + f * 0.06, clampf(delta * 2.0, 0.0, 1.0))
+
+		# Cross-fade the per-biome grade LUT + resting saturation toward the
+		# current biome's targets (saturation only when Bullet Time isn't driving it).
+		var gk := clampf(delta * 0.9, 0.0, 1.0)
+		_biome_saturation = lerpf(_biome_saturation, _biome_saturation_tgt, gk)
+		if not _bullet_time_active:
+			env.adjustment_saturation = lerpf(env.adjustment_saturation, _biome_saturation, gk)
+		if _grade_gradient:
+			var moved := false
+			if not _grade_lo.is_equal_approx(_grade_lo_tgt):
+				_grade_lo = _grade_lo.lerp(_grade_lo_tgt, gk)
+				moved = true
+			if not _grade_hi.is_equal_approx(_grade_hi_tgt):
+				_grade_hi = _grade_hi.lerp(_grade_hi_tgt, gk)
+				moved = true
+			if moved:
+				_grade_gradient.set_color(0, _grade_lo)
+				_grade_gradient.set_color(1, _grade_hi)
 
 
 # --------------------------------------------------------------- event feel
@@ -155,8 +190,11 @@ func _on_ability_activated(ability_name: StringName) -> void:
 func _on_bullet_time_changed(active: bool) -> void:
 	if _world_env == null or _world_env.environment == null:
 		return
+	_bullet_time_active = active
 	var env := _world_env.environment
-	var target_sat := 0.45 if active else 1.22
+	# Restore to the current biome's resting saturation (not a hardcoded value),
+	# so the per-biome grade survives a Bullet Time dip.
+	var target_sat := 0.45 if active else _biome_saturation
 	var tw := create_tween()
 	tw.tween_property(env, "adjustment_saturation", target_sat, 0.25)
 
@@ -202,13 +240,30 @@ func _apply_theme(theme: Dictionary, instant: bool) -> void:
 	var fog: Color = theme.get("fog", env.fog_light_color)
 	var amb: Color = theme.get("ambient", env.ambient_light_color)
 	var lit: Color = theme.get("light", _sun.light_color if _sun else Color.WHITE)
+	var rim: Color = theme.get("rim", Color(0.55, 0.75, 1.0))
 
 	if _biome_particles and _biome_particles.has_method("apply_biome"):
 		_biome_particles.apply_biome(String(theme.get("name", "DOWNTOWN")), instant)
 
+	# Per-biome grade + rim targets; the _process crossfade eases toward these.
+	_grade_lo_tgt = theme.get("grade_lo", _grade_lo_tgt)
+	_grade_hi_tgt = theme.get("grade_hi", _grade_hi_tgt)
+	_biome_saturation_tgt = theme.get("sat", _biome_saturation_tgt)
+
+	if _player and _player.has_method("set_rim_color"):
+		_player.set_rim_color(rim, instant)
+
 	if instant:
 		env.fog_light_color = fog
 		env.ambient_light_color = amb
+		_grade_lo = _grade_lo_tgt
+		_grade_hi = _grade_hi_tgt
+		_biome_saturation = _biome_saturation_tgt
+		if _grade_gradient:
+			_grade_gradient.set_color(0, _grade_lo)
+			_grade_gradient.set_color(1, _grade_hi)
+		if not _bullet_time_active:
+			env.adjustment_saturation = _biome_saturation
 		if _sun:
 			_sun.light_color = lit
 		return
@@ -218,3 +273,21 @@ func _apply_theme(theme: Dictionary, instant: bool) -> void:
 	tw.tween_property(env, "ambient_light_color", amb, 3.0)
 	if _sun:
 		tw.tween_property(_sun, "light_color", lit, 3.0)
+
+
+## Builds the 1D color-correction LUT (a 2-stop duotone tone-curve: shadows→lo,
+## highlights→hi, applied per channel) and attaches it to the environment.
+func _build_grade_lut() -> void:
+	if _world_env == null or _world_env.environment == null:
+		return
+	_grade_gradient = Gradient.new()
+	_grade_gradient.set_offset(0, 0.0)
+	_grade_gradient.set_offset(1, 1.0)
+	_grade_gradient.set_color(0, _grade_lo)
+	_grade_gradient.set_color(1, _grade_hi)
+	_grade_lut = GradientTexture1D.new()
+	_grade_lut.gradient = _grade_gradient
+	_grade_lut.width = 128
+	var env := _world_env.environment
+	env.adjustment_enabled = true
+	env.adjustment_color_correction = _grade_lut

@@ -66,6 +66,11 @@ const THEMES: Array[Dictionary] = [
 		"fog": Color(0.10, 0.08, 0.15),
 		"ambient": Color(0.20, 0.10, 0.30),
 		"light": Color(0.55, 0.70, 1.00),
+		# Cool electric-blue rim separates the runner from the dark road; a cool
+		# duotone grade (LUT shadows→highlights) keeps Downtown crisp and nocturnal.
+		"rim": Color(0.45, 0.70, 1.00),
+		"grade_lo": Color(0.04, 0.05, 0.12), "grade_hi": Color(0.95, 0.97, 1.00),
+		"sat": 1.18,
 	},
 	{
 		"name": "COUNTRYSIDE",
@@ -79,6 +84,10 @@ const THEMES: Array[Dictionary] = [
 		"fog": Color(0.09, 0.18, 0.10),
 		"ambient": Color(0.18, 0.32, 0.18),
 		"light": Color(0.78, 1.00, 0.70),
+		# Warm sun-green rim + a bright, warm-highlight grade for open daylight.
+		"rim": Color(0.72, 1.00, 0.55),
+		"grade_lo": Color(0.06, 0.10, 0.06), "grade_hi": Color(1.00, 1.00, 0.92),
+		"sat": 1.08,
 	},
 	{
 		"name": "INDUSTRIAL",
@@ -92,6 +101,10 @@ const THEMES: Array[Dictionary] = [
 		"fog": Color(0.18, 0.12, 0.06),
 		"ambient": Color(0.35, 0.22, 0.10),
 		"light": Color(1.00, 0.72, 0.42),
+		# Hot amber rim cuts through smog; a desaturated, warm-brown grade reads grimy.
+		"rim": Color(1.00, 0.65, 0.30),
+		"grade_lo": Color(0.10, 0.07, 0.04), "grade_hi": Color(1.00, 0.95, 0.82),
+		"sat": 0.95,
 	},
 	{
 		"name": "NEON CITY",
@@ -105,6 +118,11 @@ const THEMES: Array[Dictionary] = [
 		"fog": Color(0.16, 0.04, 0.20),
 		"ambient": Color(0.30, 0.08, 0.40),
 		"light": Color(1.00, 0.45, 0.95),
+		# Hot-pink rim + a punchy magenta duotone grade and lifted saturation make
+		# Neon City the showpiece (pairs with the existing bloom/glow).
+		"rim": Color(1.00, 0.40, 0.95),
+		"grade_lo": Color(0.10, 0.02, 0.14), "grade_hi": Color(1.00, 0.92, 1.00),
+		"sat": 1.35,
 	},
 ]
 

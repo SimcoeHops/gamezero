@@ -809,3 +809,60 @@ range + the `0.78`/`0.32` thresholds in CarSpawner. Note the system is intention
 (no HUD tell) — if it ever feels off it'll be hard to diagnose by eye; the print harness in the
 `_ddatest` swap is the way to re-inspect the numbers. Follow-up logged: a broader end-to-end
 difficulty-curve tuning pass once this is playtested.
+
+---
+
+## 2026-06-19 — Player rim/back light + per-biome color grade (iter 15, Build mode)
+
+**What & why:** Attacked **#4 Visual polish** — the VISION's "no asset-flip look" anti-goal —
+with the top safe NOW item. Picked it deliberately over the two items above it: **#9 pooling**
+is flagged high-regression-risk (lifecycle bugs pass smoke yet break feel — wrong call
+unsupervised) and **DECIDE timed-guns** needs a human. Before this, biomes differed only in
+fog/ambient/sun color and the runner had no light separating him from the road, so the Kenney
+kits read as assembled parts, not one art-directed world.
+
+**Two biome-keyed additions, both cross-fading on biome change:**
+1. **Runner rim/back light** — a code-built `RimLight` OmniLight3D in `PlayerController._ready`
+   (same pattern as `_star_light`/`GunHold`), placed above-and-ahead at `(0, 2.3, -1.7)`,
+   range 5.5, no shadows. Camera is at +Z looking down −Z and the runner faces −Z, so a light
+   ahead+above grazes his camera-facing silhouette → a rim that separates him from the dark road
+   and tints him to the biome accent. It **breathes brighter with `flow_heat`**
+   (`_rim_base_energy 1.7 × (1 + heat*0.9) × subtle sin`) so a hot streak makes him glow; the
+   star aura owns the light while invincible (rim drive gated on `not _star_active`). New
+   `set_rim_color(color, instant)` tweened by Main over 3 s, matching the fog/ambient fade.
+2. **Per-biome color grade** — a 1D color-correction LUT (`GradientTexture1D`, 2-stop duotone
+   tone-curve: shadows→`grade_lo`, highlights→`grade_hi`, applied per channel) attached to the
+   environment in `_build_grade_lut`, plus a **resting saturation** per biome. Both cross-fade in
+   `Main._process` by lerping the LUT endpoint colors + saturation toward the biome targets — a
+   genuine "designed" grade, not just a recolor. Bullet Time now restores to the biome's resting
+   saturation (was a hardcoded 1.22) so the grade survives the BT desaturation dip.
+
+Each `THEMES` entry gained `rim`/`grade_lo`/`grade_hi`/`sat`: **Downtown** cool electric-blue rim
++ cool nocturnal grade (sat 1.18); **Countryside** warm sun-green + bright warm grade (1.08);
+**Industrial** hot-amber + desaturated warm-brown grimy grade (0.95); **Neon City** hot-pink +
+punchy magenta duotone + lifted sat (1.35), leaning into the existing bloom/glow for a showpiece.
+
+**Files touched:** `scenes/highway/Highway.gd` (4 theme recipes), `scenes/player/
+PlayerController.gd` (rim build + flow pulse in `_process` + `set_rim_color`), `scenes/main/
+Main.gd` (grade fields, `_build_grade_lut`, grade/sat crossfade in `_process`, rim+grade targets
+in `_apply_theme`, BT saturation restore), `BACKLOG.md`, this journal.
+
+**Verified (per CLAUDE.md):** Clean headless boot, no `error|script|parse|invalid|shader`
+(ignored "resources still in use at exit"). Exercised via the documented `Main._ready` swap run
+**windowed** (so `_process` + the real renderer apply the LUT): boot grade = Downtown
+(lo (0.04,0.05,0.12), sat 1.18), `RimLight` built with Downtown color (0.45,0.7,1.0) energy
+~1.78, `adjustment_color_correction` non-null; forced a crossfade to Neon → +1 s later grade/sat/
+rim all easing toward Neon targets (lo→(0.076,0.032,0.132), sat 1.18→1.28→1.35, rim→
+(0.635,0.599,0.983)), zero errors. Restored `Main.gd` from `/tmp/Main.gd.bak` (grep confirms
+GRADETEST gone, `_front_end.begin()` back) + re-ran a clean headless boot.
+
+**Unverified / risk — human should playtest (it's a VISUAL feature; GPU look is unconfirmed,
+the dummy/windowed run proves wiring not aesthetics):** rim energy/range (does it separate the
+runner without a hot blob on the road or blowing out the skin tex?); the LUT `grade_lo` lifts
+blacks toward the biome shadow tint — combined with the existing `adjustment_contrast` 1.12 this
+could read as either a tasteful filmic grade or a washed/muddy floor, esp. Industrial. Neon's
+1.35 sat + magenta LUT + bloom could tip garish. The 3 s crossfade and BT-restore-to-biome-sat
+should be eyeballed on a real biome transition. Tune the per-theme `rim`/`grade_lo`/`grade_hi`/
+`sat` in Highway.gd, `_rim_base_energy`/pulse in PlayerController, and the `delta*0.9` crossfade
+rate in Main. Low regression risk: additive, no gameplay/collision/spawner changes; worst case
+is purely cosmetic and easily tuned.
