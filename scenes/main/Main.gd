@@ -27,6 +27,7 @@ var _camera_base_pos: Vector3
 var _base_fov: float = 65.0
 var _camera_roll: float = 0.0
 var _biome_particles: GPUParticles3D
+var _tutorial: CanvasLayer
 
 
 func _ready() -> void:
@@ -66,6 +67,13 @@ func _ready() -> void:
 	# streams past with speed and recolors on biome change.
 	_biome_particles = (load("res://scenes/environment/BiomeParticles.gd") as Script).new()
 	add_child(_biome_particles)
+
+	# First-run, non-blocking control tutorial (teaches move/jump/stomp through play
+	# at each unlock moment; only shows once, persisted via Settings.tutorial_seen).
+	_tutorial = (load("res://scenes/ui/TutorialOverlay.gd") as Script).new()
+	add_child(_tutorial)
+	if _tutorial.has_method("set_player"):
+		_tutorial.set_player(_player)
 
 	if _highway and _highway.has_signal("theme_changed"):
 		_highway.theme_changed.connect(_on_theme_changed)

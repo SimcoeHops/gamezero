@@ -10,10 +10,38 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## NOW — highest leverage (do these first)
 
-<!-- Refilled by the 2026-06-19 deep audit (iter 8). Iters 5-7 lifted the iter-4
-     lows (#5 Audio, #6 Progression, #10 Accessibility) off the floor. The new
-     lowest cluster is #1 Core fun, #4 Visual polish, #8 Difficulty — all at 3.
-     These four items attack those. See the iter-8 JOURNAL scorecard. -->
+<!-- Refilled by the 2026-06-19 deep audit (iter 12). Iters 9-11 lifted the iter-8
+     lows (#1 Core fun via greed+flow, #4 Visual polish via biome particles). The
+     new floor is #7 Onboarding (was 2 — iter 12 shipped the first-run tutorial,
+     lifting it toward 3), then #8 Difficulty and #9 Performance (both 3). These
+     items attack those, plus a #1/#3 design risk to decide. See iter-12 JOURNAL. -->
+
+- [ ] **Object pooling for the hot spawners** (Performance #9): cars, coins, projectiles, and
+      crash debris all instantiate+free every spawn — under worst-case carnage (MINIGUN + MORTAR
+      AOE + many cars) this churns allocations and risks frame hitches, the exact thing the
+      VISION "no jank" anti-goal warns about. Add a simple free-list pool (reset-on-reuse) to
+      CarSpawner + Projectile + CoinSpawner; measure worst-case frame time before/after. NOTE:
+      higher regression risk than usual (lifecycle/state-reset bugs can pass smoke yet break
+      feel) — do it carefully, exercise heavily headless, ideally with human oversight.
+
+- [ ] **Dynamic difficulty (light rubber-banding)** (Difficulty #8): the spawn/speed ramp is
+      fully open-loop (pure `time_elapsed`). Add a gentle DDA signal — e.g. nudge spawn density
+      / gap generosity from recent near-miss rate, dodge streak, and time-since-last-crash — so
+      a struggling player gets a hair more breathing room and a flow-state expert gets packed
+      harder. Keep it subtle and always honor the dodgeable-gap guarantee. Pairs with flow_heat.
+
+- [ ] **DECIDE: timed guns vs. permanent loadout** (Core fun #1 / power-fantasy pillar): guns
+      now expire after 20 s (GunManager `GUN_DURATION`, stacking layers). This fights the
+      "build-a-loadout, visible power growth" pillar — the arsenal constantly evaporates. Either
+      (a) make picks permanent and lean on level/MAX_LEVEL for the cap, or (b) keep timed but
+      make the decay *legible* (HUD countdown rings already warn?) and balance gates around it.
+      Human decision needed; then implement + rebalance. High leverage on the core hook.
+
+- [ ] **Tutorial polish v2 + bullet-time/weapon teaching** (follow-up to iter-12 onboarding):
+      the first-run tutorial teaches move/jump/stomp; extend the same pattern to the bullet-time
+      (dodge-25) and weapon (dodge-50) unlocks ("SWIPE DOWN FOR BULLET TIME"), and consider a
+      tiny persistent control-glyph legend for the first ~20 s. Tune prompt placement/timing
+      once playtested (see iter-12 JOURNAL risks).
 
 - [ ] **Player rim/back light + stronger per-biome grade** (Visual polish #4): a back/rim light
       keyed to the biome accent separates the runner from the road and unifies the Kenney kits
@@ -84,8 +112,8 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       celebrate them).
 
 ## ONBOARDING & UX
-- [ ] First-run tutorial / teaching moment (non-blocking): teach move, jump, stomp, guns in
-      the first 15 seconds through play, not text walls.
+- [x] First-run tutorial / teaching moment (non-blocking) — DONE iter 12 (see Done): teaches
+      move/jump/stomp at each unlock moment through play, plus a guns-auto-fire toast.
 - [ ] Front-end & menu polish: kinetic transitions, animated buttons, consistent typography &
       iconography, screen wipes. The portrait cards are a great base — make menus fun to touch.
 - [ ] Game-over recap polish: lean into the JourneyMap, animate stat count-ups, clear CTAs.
@@ -113,6 +141,31 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **First-run control tutorial (non-blocking, play-integrated)** (2026-06-19, iter 12 deep
+      audit ship) — attacks the audit's lowest score (#7 Onboarding, 2). The game taught nothing:
+      abilities unlock progressively (jump@10 dodges, bullet-time@25, weapon@50) but the unlock
+      was only a flash + dim HUD icon, so a new player never learned a control became available
+      or how to use it. New `scenes/ui/TutorialOverlay.gd` (code-built CanvasLayer, no .tscn)
+      teaches **through play, never blocking**: a MOVE prompt at run start (clears after 2 m of
+      lateral travel), a JUMP prompt that fires the instant jump unlocks (clears on first jump),
+      a STOMP prompt after the first jump (clears on first `car_stomped`), and a one-shot
+      "GUNS AUTO-FIRE!" toast on the first pickup. Each prompt fades/scales in, breathes, and on
+      completion punches green with a ✓ + chime + haptic. First-run only, persisted via new
+      `Settings.tutorial_seen` (`[game]`, back-compatible); marked seen the moment the pivotal
+      JUMP lesson completes so it never nags; a paid continue doesn't restart it. Wired in
+      `Main._ready` (instantiate + `set_player`). Files: `scenes/ui/TutorialOverlay.gd` (new),
+      `scenes/main/Main.gd`, `scripts/autoload/Settings.gd`. Verified: clean headless + windowed
+      boot; exercised the full step machine via the `Main._ready` swap — MOVE→JUMP_WAIT on
+      lateral move, JUMP on unlock, seen=true + STOMP on jump, toast on gun pickup, FINISHED on
+      stomp, `_active=false` after end, and no re-begin on a second PLAYING; swap restored + dev
+      save's `tutorial_seen` reset to false so the human sees it; re-verified clean.
+      - [ ] Human playtest (GPU look/feel unverified): prompt placement at real res (card at 70%
+            height, toast at 58% — confirm no clash with the greed meter at ~15.5% or masking the
+            next obstacle), the green-✓ confirm read, and the 0.7 s confirm→next pacing. Tune
+            `PROMPT_Y`/`TOAST_Y` + timers in TutorialOverlay.gd. MOVE auto-clears after only 2 m —
+            watch that it doesn't complete before the player reads it on a packed first wave.
+      - [ ] Follow-up (in NOW): extend the pattern to bullet-time (dodge-25) + weapon (dodge-50)
+            unlocks; optional persistent control-glyph legend for the first ~20 s.
 - [x] **Per-biome environmental particles & atmosphere** (2026-06-19, iter 11) — the top NOW item
       and the biggest "asset-flip → art-directed" lever (#4 Visual polish). New
       `scenes/environment/BiomeParticles.gd` (a code-built GPUParticles3D, no .tscn) fills the

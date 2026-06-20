@@ -594,3 +594,99 @@ masks the next obstacle). All knobs live in the `BIOMES` dict + the `speed_scale
 WorldEnvironment fog rather than a new haze pass; logged as a follow-up. Perf: one GPUParticles3D,
 170 particles, unshaded billboard — cheap on desktop, unmeasured on mobile GPU (flag with the other
 GPU-particle items if a perf pass happens).
+
+---
+
+## 2026-06-19 — Deep audit (iter 12) + first-run control tutorial
+
+**Mode:** Deep-audit (iteration 12 = multiple of 4). Booted clean headless; re-read the core
+systems critically with iters 9–11's changes in mind (GameManager, GunManager, CarSpawner,
+ProgressionManager, PlayerController jump/stomp/unlock gating, Settings, Main wiring). Iters
+9–11 attacked the iter-8 lows (#1 Core fun via greed meter + flow-state; #4 Visual polish via
+biome particles), so this audit re-scores to find the new floor.
+
+**Rubric scorecard (harsh critic, 1–5):**
+1. **Core fun & game loop — 3.5.** Greed meter + flow-state + level-up pick + shop + biomes +
+   PB chase now make a genuinely layered loop with short- AND long-term escalation. Two real
+   gaps remain: (a) **guns are now TIMED** (20s stacking layers that expire — see GunManager
+   `GUN_DURATION`), which quietly *undercuts* the "build-a-loadout power fantasy" pillar — you
+   can't build a lasting arsenal, it constantly evaporates; (b) no boss/pursuer beat for peaks.
+2. **Game feel / responsiveness — 3.5.** Jump buffer + coyote (iter 8), variable jump, eased
+   steering, speed-FOV, lean/flair. Lateral easing still untuned; no speed-sensation pass
+   (wind audio, FOV ramp curve, camera bob) beyond the existing FOV widen.
+3. **Juice & feedback — 4.** Crash, level-up, near-miss, gantry, star, game-over celebration,
+   flow glow all strong. **Standing gap, now flagged in FOUR audits: coin pickup is still
+   near-silent** (no magnetize / rising chime / count-up pop / sparkle). It's the one dull
+   moment in an otherwise loud game.
+4. **Visual polish & art direction — 3.5.** Post stack (ACES/glow/grade/fog) + per-biome
+   fog/ambient/sun + biome particles (iter 11). Still no per-biome skybox, weather, or player
+   rim-light; cars still read a touch asset-flip in clean light.
+5. **Audio — 3.5.** Per-gun SFX, playlist, footsteps, flow swell. No adaptive filter sweep, no
+   milestone stingers.
+6. **Progression & retention — 3.** Shop + PB/best-distance recap. **No daily/missions, no
+   leaderboard, skins ungated** — the single biggest remaining retention surface.
+7. **Onboarding & UX — 2 (LOWEST).** This is the real floor. There was **zero teaching**:
+   abilities unlock progressively (jump@10 dodges, bullet-time@25, weapon@50) but the unlock
+   was only a flash + a dim HUD icon — a new player has no idea a control became available or
+   HOW to use it. No first-run guidance at all. A top-10 runner cannot ship this cold open.
+   *(This iteration ships the fix — see below — lifting it toward 3.)*
+8. **Difficulty & balance — 3 (joint-low).** Sensible time-based ramp + always-dodgeable gap +
+   traffic eases past 40/55 m/s, but it's **fully open-loop** (no dynamic difficulty / no
+   reaction to how the player is doing) and every curve (XP, economy, spawn, gun cooldowns) is
+   a first guess. Gun balance unvalidated; the timed-gun model especially needs a balance look.
+9. **Performance & stability — 3 (joint-low).** Clean, no errors, but still **no pooling** —
+   cars/coins/projectiles/particles all instantiate+free; worst-case carnage (many guns × many
+   cars × AOE explosions × debris) is unmeasured. The 60fps spell is unprotected under load.
+10. **Accessibility & options — 3.** Shake/haptics/flash toggles (iter 7). No colorblind,
+    motion-blur, remap, or text-scale yet.
+
+**Lowest cluster: #7 Onboarding (2), then #8 Difficulty (3) and #9 Performance (3).** Per
+VISION priority (fun → feel → looks) — onboarding gates whether a new player ever *reaches*
+the fun, so it's the highest-leverage floor. Refilled BACKLOG "NOW" with scoped items attacking
+#7, #8, #9, plus the timed-gun power-fantasy concern (a #1/#3 risk worth a human decision).
+
+**Shipped this iteration (the best fully-completable + headless-verifiable one):** a
+**non-blocking, play-integrated first-run control tutorial** — directly attacks the lowest
+score (#7). New `scenes/ui/TutorialOverlay.gd` (code-built CanvasLayer, no .tscn, matching the
+LevelUpScreen/BiomeParticles pattern), instantiated + handed the player in `Main._ready`. It
+teaches each control **at the moment it becomes available, through play, never blocking**:
+- **MOVE** prompt the instant the run starts → clears when the player has moved ≥2 m laterally.
+- **JUMP** prompt fires *the instant jump unlocks* (the dodge-10 milestone) — turning the
+  previously-opaque unlock flash into an actionable "TAP TO JUMP" → clears on the first jump.
+- **STOMP** ("land on a car mid-jump") after the first jump → clears on the first `car_stomped`.
+- An independent one-shot **"GUNS AUTO-FIRE!"** toast on the first gun pickup (the auto-fire
+  model is non-obvious).
+Each prompt fades/scales in (TRANS_BACK), breathes with a sine pulse, and on completion punches
+**green with a ✓ + a pickup chime + haptic**, so doing the thing feels acknowledged. Shows
+**only on the first run** — persisted via new `Settings.tutorial_seen` (saved under `[game]`,
+back-compatible); marked seen the moment the pivotal JUMP lesson completes (so it never nags,
+even if the player dies before reaching stomp), and on any run-ending state. A paid continue
+re-entering PLAYING does NOT restart the pass (`_active` guard).
+
+**Files touched:** `scenes/ui/TutorialOverlay.gd` (new), `scenes/main/Main.gd` (instantiate +
+`set_player`), `scripts/autoload/Settings.gd` (`tutorial_seen` + load/save + `save_tutorial_seen`),
+`BACKLOG.md`, `tools/overnight/JOURNAL.md`.
+
+**Verified (per CLAUDE.md):** Clean headless boot (no `error|script|parse|invalid|shader`).
+Exercised the **full step machine** via the documented `Main._ready` swap (`_tut_test`), both
+headless and **windowed** (real renderer for the Labels/PanelContainer/tweens): reset
+`tutorial_seen=false` → `start_game` → step=MOVE(1); moved the player x to 3.5 → step advanced
+to JUMP_WAIT(2); emitted `ability_unlocked(&"jump")` → step JUMP(3); emitted
+`ability_activated(&"jump")` → `tutorial_seen` flipped **true** and (after the 0.7 s green-confirm
+delay) the STOMP(4) prompt showed; `add_gun("LASER")` → `toast_shown=true`; emitted `car_stomped`
+→ FINISHED(5); after the end timer `_active=false`, `tutorial_seen` persisted true; and a second
+`state_changed(PLAYING)` correctly did **not** re-begin (`_active=false`). Zero errors in either
+pass. Restored `Main.gd` from `/tmp/Main.gd.bak` (grep confirms `_tut_test`/`TUT` gone,
+`_front_end.begin()` back), reset the dev save's `tutorial_seen` back to **false** (so the human
+sees the tutorial on their next launch), re-ran a clean headless boot.
+
+**Unverified / risk — human should playtest (the *look/feel* is GPU-unconfirmed):** prompt
+placement at real resolution (card centered at 70% screen height + toast at 58% — confirm they
+never mask the next obstacle or clash with the centered greed meter at ~15.5%), the read of the
+green ✓ confirm + chime, and especially the **timing/pacing**: does the JUMP prompt appearing at
+the dodge-10 unlock feel well-placed, and is the 0.7 s confirm→next delay snappy or sluggish?
+Tune `PROMPT_Y`/`TOAST_Y` + the timer durations in TutorialOverlay.gd. Note the MOVE step
+auto-completes after only 2 m of lateral travel — on a packed first wave a player might dodge
+that far before reading the prompt; acceptable (they *learned by doing*), but worth a look.
+**Design flag for the human (not shipped):** the timed-gun model (guns expire after 20 s) is in
+tension with the VISION "build-a-loadout power fantasy" pillar — logged as a NOW item to decide.

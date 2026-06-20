@@ -22,6 +22,10 @@ var shake_scale: float = 1.0   # 0..1 multiplier on all camera trauma + FOV kick
 var haptics_on: bool = true    # gates all Input.vibrate_handheld calls
 var reduce_flashes: bool = false  # dampens full-screen flashes + impact pulse
 
+# Onboarding — true once the player has been taught the core controls (move/jump)
+# on their first run, so the first-run TutorialOverlay never shows again.
+var tutorial_seen: bool = false
+
 var _cfg := ConfigFile.new()
 
 
@@ -41,6 +45,7 @@ func _load() -> void:
 	shake_scale = _cfg.get_value("accessibility", "shake_scale", shake_scale)
 	haptics_on = _cfg.get_value("accessibility", "haptics_on", haptics_on)
 	reduce_flashes = _cfg.get_value("accessibility", "reduce_flashes", reduce_flashes)
+	tutorial_seen = _cfg.get_value("game", "tutorial_seen", tutorial_seen)
 
 
 func _save() -> void:
@@ -52,6 +57,7 @@ func _save() -> void:
 	_cfg.set_value("accessibility", "shake_scale", shake_scale)
 	_cfg.set_value("accessibility", "haptics_on", haptics_on)
 	_cfg.set_value("accessibility", "reduce_flashes", reduce_flashes)
+	_cfg.set_value("game", "tutorial_seen", tutorial_seen)
 	_cfg.save(SAVE_PATH)
 
 
@@ -111,4 +117,11 @@ func set_haptics_on(b: bool) -> void:
 
 func set_reduce_flashes(b: bool) -> void:
 	reduce_flashes = b
+	_save()
+
+
+## Persists the onboarding flag (called by the TutorialOverlay once the player has
+## been taught). Kept as its own entry point so the overlay doesn't depend on the
+## private _save().
+func save_tutorial_seen() -> void:
 	_save()
