@@ -98,6 +98,12 @@ func _build_panel() -> void:
 	box.add_child(_make_audio_row("SFX", Settings.sfx_volume, Settings.sfx_on,
 		Callable(Settings, "set_sfx_volume"), Callable(Settings, "set_sfx_on")))
 
+	box.add_child(_make_shake_row())
+	box.add_child(_make_toggle_row("HAPTICS", Settings.haptics_on,
+		Callable(Settings, "set_haptics_on")))
+	box.add_child(_make_toggle_row("REDUCE FLASHES", Settings.reduce_flashes,
+		Callable(Settings, "set_reduce_flashes")))
+
 	var resume := Button.new()
 	resume.text = "RESUME"
 	resume.custom_minimum_size = Vector2(0, 70)
@@ -138,6 +144,60 @@ func _make_audio_row(label_text: String, vol: float, on: bool, vol_cb: Callable,
 	toggle.toggled.connect(func(p: bool): on_cb.call(p))
 	row.add_child(toggle)
 
+	return row
+
+
+## Screen-shake intensity: a 0–100% slider with a live percent readout. (No
+## live camera preview here — the tree is paused while this menu is open.)
+func _make_shake_row() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+
+	var name_label := Label.new()
+	name_label.text = "SHAKE"
+	name_label.custom_minimum_size = Vector2(110, 0)
+	name_label.add_theme_font_size_override("font_size", 30)
+	row.add_child(name_label)
+
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.value = Settings.shake_scale
+	slider.custom_minimum_size = Vector2(220, 40)
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(slider)
+
+	var pct := Label.new()
+	pct.text = "%d%%" % roundi(Settings.shake_scale * 100.0)
+	pct.custom_minimum_size = Vector2(64, 0)
+	pct.add_theme_font_size_override("font_size", 26)
+	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(pct)
+
+	slider.value_changed.connect(func(v: float):
+		Settings.set_shake_scale(v)
+		pct.text = "%d%%" % roundi(v * 100.0))
+	return row
+
+
+## A label + CheckButton row for a boolean accessibility option.
+func _make_toggle_row(label_text: String, on: bool, setter: Callable) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+
+	var name_label := Label.new()
+	name_label.text = label_text
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.add_theme_font_size_override("font_size", 30)
+	row.add_child(name_label)
+
+	var toggle := CheckButton.new()
+	toggle.button_pressed = on
+	toggle.toggled.connect(func(p: bool):
+		setter.call(p)
+		AudioManager.play_ui())
+	row.add_child(toggle)
 	return row
 
 

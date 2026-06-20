@@ -311,3 +311,56 @@ clean headless boot.
   left generous so the shop can be playtested immediately. New `[upgrades]` keys are additive.
 - Buy SFX reuse `play_unlock`/`play_ui`; a dedicated "ka-ching" + a row punch/particle would make
   spending feel better (follow-up logged). Skins remain free (gating them is a logged follow-up).
+
+## 2026-06-19 — Accessibility & options screen (iter 7, Build mode)
+
+**What & why:** Shipped the top NOW item and attacked the joint-lowest audit score (#10
+Accessibility, 2). The game's juice is deliberately heavy (big trauma, double crash flashes,
+impact chroma ring) and there was previously NO way to tame it — a hard blocker at a top-10
+quality bar and a real comfort/photosensitivity issue. Now there's a proper options surface.
+
+**How it works:**
+- **One knob governs all callers** (the key design choice): rather than touch the 57 Juice
+  call-sites, the scaling lives *at the source* in `Juice`, read live from `Settings` each call
+  so changes apply instantly:
+  - `add_trauma(a)` / `kick_fov(deg)` multiply by `Settings.shake_scale` (0..1).
+  - `flash(...)` intensity and `impact(amount)` multiply by `_flash_scale()` (1.0 normally,
+    0.3 when REDUCE FLASHES is on — a soft floor, not full-off, so feedback still reads).
+  - `haptic(ms)` early-returns when `Settings.haptics_on` is false.
+  - Safe re: autoload order (Juice loads before Settings): these are only called during
+    gameplay, long after all autoloads `_ready`; helpers still guard `if Settings`.
+- **Persistence** (`Settings`): new `shake_scale`/`haptics_on`/`reduce_flashes`, saved under a
+  new `[accessibility]` section of `user://settings.cfg` (back-compatible — missing keys default),
+  with `set_shake_scale`/`set_haptics_on`/`set_reduce_flashes` setters that clamp + save.
+- **UI — two surfaces:**
+  - **Front-end SETTINGS panel** (`FrontEnd._show_settings`, reached from a new title button):
+    a full options screen — MUSIC + SFX rows (slider + on/off, matching the pause style) and an
+    ACCESSIBILITY section with a SCREEN SHAKE 0–100% slider (live % readout), HAPTICS toggle, and
+    REDUCE FLASHES toggle. All plain Controls (no custom `_draw`) so it's headless-verifiable.
+    The shake slider **previews live**: each step fires `Juice.add_trauma(0.5)`, and since Main
+    keeps compositing the camera in MENU, the world behind the dim actually shakes at the strength
+    you're selecting (scaled by the new value itself — drag to 0% and it stops).
+  - **Pause menu**: the same 3 rows appended to the existing audio panel
+    (`PauseMenu._make_shake_row` + `_make_toggle_row`), so the options are reachable mid-run too.
+
+**Files touched:** `scripts/autoload/Settings.gd`, `scripts/autoload/Juice.gd`,
+`scenes/ui/FrontEnd.gd`, `scenes/ui/PauseMenu.gd`, `BACKLOG.md`, `tools/overnight/JOURNAL.md`.
+
+**Verified (per CLAUDE.md):** Clean headless boot, no `error|script|parse|invalid|shader`.
+Exercised the full path windowed via the temporary `Main._ready` swap (`_settings_test`): built
+the front-end SETTINGS panel (no errors), then drove the knobs through Settings→Juice — shake 0%
+→ `Juice._trauma == 0.000` after `add_trauma(1.0)`; shake 50% adds trauma; reduce-flashes →
+`Juice._impact == 0.300` after `impact(1.0)`; haptics-off gate + a `flash` call all ran clean.
+Restored `Main.gd` from `/tmp/Main.gd.bak` (confirmed `_settings_test` gone) and re-ran a clean
+boot. Test left the dev save's accessibility values at defaults (the test restores them).
+
+**Unverified / risk — human should playtest/decide:**
+- **Feel of the defaults & ranges:** shake defaults to 100% (current behaviour); confirm the
+  slider feels right end-to-end and whether 0% should fully kill shake (it does) vs a small floor.
+- **Reduce-flashes scope:** currently dampens the white `flash` + the `impact` shockwave ring to
+  0.3, but NOT the per-channel chroma edge-fringe in `screen_fx.gdshader` (that's driven by the
+  same `impact_pulse`, so it IS reduced proportionally — but the speed-line vignette is untouched).
+  Decide if reduce-flashes should also calm speed-lines/bullet-time desaturation.
+- No GPU/visual confirmation of the live shake-preview look or panel layout at real resolution
+  (the front-end panel is now title + 2 audio rows + section label + 3 accessibility rows + BACK;
+  should fit 720p+ but verify).

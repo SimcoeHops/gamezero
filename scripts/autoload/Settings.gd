@@ -16,6 +16,12 @@ var music_on: bool = true
 var sfx_on: bool = true
 var selected_skin: String = DEFAULT_SKIN
 
+# Accessibility — one knob each, read live by Juice so a single setting governs
+# every shake/flash/haptic caller in the game (see Juice.gd).
+var shake_scale: float = 1.0   # 0..1 multiplier on all camera trauma + FOV kicks
+var haptics_on: bool = true    # gates all Input.vibrate_handheld calls
+var reduce_flashes: bool = false  # dampens full-screen flashes + impact pulse
+
 var _cfg := ConfigFile.new()
 
 
@@ -32,6 +38,9 @@ func _load() -> void:
 	music_on = _cfg.get_value("audio", "music_on", music_on)
 	sfx_on = _cfg.get_value("audio", "sfx_on", sfx_on)
 	selected_skin = _cfg.get_value("game", "skin", selected_skin)
+	shake_scale = _cfg.get_value("accessibility", "shake_scale", shake_scale)
+	haptics_on = _cfg.get_value("accessibility", "haptics_on", haptics_on)
+	reduce_flashes = _cfg.get_value("accessibility", "reduce_flashes", reduce_flashes)
 
 
 func _save() -> void:
@@ -40,6 +49,9 @@ func _save() -> void:
 	_cfg.set_value("audio", "music_on", music_on)
 	_cfg.set_value("audio", "sfx_on", sfx_on)
 	_cfg.set_value("game", "skin", selected_skin)
+	_cfg.set_value("accessibility", "shake_scale", shake_scale)
+	_cfg.set_value("accessibility", "haptics_on", haptics_on)
+	_cfg.set_value("accessibility", "reduce_flashes", reduce_flashes)
 	_cfg.save(SAVE_PATH)
 
 
@@ -84,4 +96,19 @@ func set_sfx_on(b: bool) -> void:
 
 func set_skin(path: String) -> void:
 	selected_skin = path
+	_save()
+
+
+func set_shake_scale(v: float) -> void:
+	shake_scale = clampf(v, 0.0, 1.0)
+	_save()
+
+
+func set_haptics_on(b: bool) -> void:
+	haptics_on = b
+	_save()
+
+
+func set_reduce_flashes(b: bool) -> void:
+	reduce_flashes = b
 	_save()

@@ -54,14 +54,16 @@ func _process(delta: float) -> void:
 	_shake_roll = _noise.get_noise_2d(s, 100.0) * MAX_ROLL * amt
 
 
-## Adds shake energy (0..1 typical). Bigger hits add more.
+## Adds shake energy (0..1 typical). Bigger hits add more. Scaled by the
+## player's accessibility shake setting so one knob governs every caller.
 func add_trauma(amount: float) -> void:
-	_trauma = clampf(_trauma + amount, 0.0, 1.25)
+	_trauma = clampf(_trauma + amount * _shake_scale(), 0.0, 1.25)
 
 
 ## Kicks the camera FOV outward by [param deg]; decays automatically.
+## Scaled by the shake setting (FOV kicks are part of the same "punch").
 func kick_fov(deg: float) -> void:
-	_fov_kick = maxf(_fov_kick, deg)
+	_fov_kick = maxf(_fov_kick, deg * _shake_scale())
 
 
 func shake_offset() -> Vector3:
@@ -77,8 +79,9 @@ func fov_kick() -> float:
 
 
 ## Triggers the crash impact overlay (shockwave + chromatic fringe). 1.0 = full.
+## Dampened when the player has enabled "reduce flashes".
 func impact(amount: float = 1.0) -> void:
-	_impact = maxf(_impact, clampf(amount, 0.0, 1.0))
+	_impact = maxf(_impact, clampf(amount * _flash_scale(), 0.0, 1.0))
 
 
 func impact_pulse() -> float:
@@ -100,21 +103,42 @@ func hit_stop(duration: float = 0.07, scale: float = 0.02) -> void:
 		Engine.time_scale = prev
 
 
-## Full-screen color flash that fades out.
+## Full-screen color flash that fades out. Intensity scaled by the player's
+## "reduce flashes" setting (0 = off would hide it; we keep a soft floor).
 func flash(color: Color = Color.WHITE, intensity: float = 0.5, fade: float = 0.25) -> void:
 	if _flash == null:
 		return
 	_flash.color = Color(color.r, color.g, color.b, 1.0)
-	_flash.modulate.a = intensity
+	_flash.modulate.a = intensity * _flash_scale()
 	var tw := create_tween()
 	tw.tween_property(_flash, "modulate:a", 0.0, fade)
 
 
-## Mobile haptic pulse (no-op on desktop).
+## Mobile haptic pulse (no-op on desktop, or when haptics are disabled).
 func haptic(ms: int = 30) -> void:
+	if not _haptics_on():
+		return
 	var os := OS.get_name()
 	if os == "iOS" or os == "Android":
 		Input.vibrate_handheld(ms)
+
+
+# --- Accessibility knobs, read live from Settings so changes apply instantly.
+# Settings loads after Juice in autoload order, but these are only ever called
+# during gameplay (long after every autoload is ready), so direct access is safe.
+
+func _shake_scale() -> float:
+	return Settings.shake_scale if Settings else 1.0
+
+
+func _flash_scale() -> float:
+	if Settings and Settings.reduce_flashes:
+		return 0.3
+	return 1.0
+
+
+func _haptics_on() -> bool:
+	return Settings.haptics_on if Settings else true
 
 
 func _build_overlay() -> void:

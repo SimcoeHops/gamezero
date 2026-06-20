@@ -18,11 +18,6 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       ("near-miss 20 cars", "reach Neon", "own 4 guns at once") with a coin reward + a
       visible streak counter. Seed the daily from the date so it's deterministic. Surface
       on the front-end and tick progress live on the HUD. Strongest runner retention driver.
-- [ ] **Accessibility & options screen** (Accessibility #10 — cheap, expected at this bar):
-      add a SETTINGS panel (front-end + pause) with screen-shake intensity (0–100%, scales
-      `Juice.add_trauma`/`kick_fov`), a haptics on/off toggle, and a reduce-flashes toggle
-      (dampens `Juice.flash`/impact pulse). Persist in `Settings`. Have `Juice` read a
-      `shake_scale`/`haptics_on`/`flash_scale` so one knob governs all callers.
 
 - [ ] **Gantry polish v2** (follow-up to the shipped gantries): per-biome sign *text/icons*
       (e.g. a billboarded WORD like the powerup gates) instead of a blank lit panel; rarer
@@ -98,8 +93,10 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 - [ ] Frame-pacing check under heavy carnage (many guns + many cars) — the worst case must hold.
 
 ## ACCESSIBILITY & OPTIONS
-- [ ] Options for screen-shake intensity, haptics, motion-blur, colorblind-safe palettes,
-      and remappable controls. Cheap to add, expected at this quality bar.
+- [x] Screen-shake intensity, haptics on/off, reduce-flashes — DONE iter 7 (see Done).
+- [ ] Remaining options: motion-blur toggle, colorblind-safe palettes, remappable controls,
+      and a UI/text-scale option. The SETTINGS panel (`FrontEnd._show_settings` /
+      `PauseMenu._build_panel`) is the place to add them.
 
 ## ASSETS WANTED (for the human / a Cowork asset-sourcing pass)
 - [ ] More CC0 vehicle variants to expand `CAR_MODEL_PATHS`; richer props per biome.
@@ -108,6 +105,29 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Accessibility & options screen** (2026-06-19, iter 7) — attacks the joint-lowest rubric
+      score (#10 Accessibility, 2). The game had NO way to tame the (heavy) shake/flash/haptics.
+      Added three accessibility knobs persisted in `Settings` under a new `[accessibility]`
+      section: **SCREEN SHAKE** (0–100% slider), **HAPTICS** (on/off), **REDUCE FLASHES**
+      (on/off). Crucially these are read **live at the source** in `Juice` so ONE knob governs
+      every caller with zero per-caller edits: `add_trauma`/`kick_fov` multiply by
+      `Settings.shake_scale`; `flash` intensity + `impact()` multiply by a `_flash_scale()`
+      (0.3 when reduce-flashes is on); `haptic()` early-returns when haptics are off. Surfaced
+      via a full **SETTINGS** panel on the title (`FrontEnd._show_settings` — audio + the 3
+      accessibility rows, plain Controls so it's headless-verifiable) reachable from a new
+      title button, AND the same 3 rows appended to the existing **pause menu**
+      (`PauseMenu._make_shake_row`/`_make_toggle_row`). The front-end shake slider previews
+      *live* — the world behind the dim actually shakes as you drag (Main keeps compositing the
+      camera in MENU), scaled by the value you're choosing. Files: `Settings.gd`, `Juice.gd`,
+      `FrontEnd.gd`, `PauseMenu.gd`. Verified: clean headless boot; exercised the settings-panel
+      build + the full Settings→Juice scaling path windowed via the `Main._ready` swap
+      (shake 0% → trauma 0.000; shake 50% adds; reduce-flashes → impact 0.300; haptics-off gate;
+      flash) with zero errors; swap restored + re-verified clean.
+      - [ ] Human playtest: default shake at 100% may still be strong for some — confirm the
+            slider range/feel and the reduce-flashes 0.3 floor; decide if reduce-flashes should
+            also dampen the per-channel chroma fringe (currently only the white flash + impact ring).
+      - [ ] Follow-up: motion-blur toggle, colorblind-safe palette option, remappable controls,
+            UI/text scale (logged in ACCESSIBILITY & OPTIONS).
 - [x] **Meta-progression coin shop** (2026-06-19, iter 6) — attacks the lowest rubric score
       (#6 Progression, 2). Persistent `coins` used to ONLY buy mid-run continues; now there's
       a real reason to grind. Added an UPGRADE SHOP reachable from the title (`FrontEnd._show_shop`

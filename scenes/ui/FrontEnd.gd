@@ -108,6 +108,14 @@ func _show_title() -> void:
 	shop.pressed.connect(_show_shop)
 	vbox.add_child(shop)
 
+	var settings_btn := Button.new()
+	settings_btn.text = "SETTINGS"
+	settings_btn.custom_minimum_size = Vector2(320, 56)
+	settings_btn.add_theme_font_size_override("font_size", 28)
+	settings_btn.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	settings_btn.pressed.connect(_show_settings)
+	vbox.add_child(settings_btn)
+
 
 ## The meta-progression shop: spend persisted coins on permanent upgrades that
 ## apply at the start of every run. Rebuilt wholesale on each purchase so levels,
@@ -364,3 +372,131 @@ func _choose(skin: String) -> void:
 	AudioManager.play_unlock()
 	_clear()
 	GameManager.start_game()
+
+
+# ----------------------------------------------------------------- settings
+## Full options screen: audio (music/sfx) + accessibility (shake, haptics,
+## reduce-flashes). The shake slider previews live — the world behind the dim
+## actually shakes as you drag, since Main keeps compositing the camera in MENU.
+func _show_settings() -> void:
+	AudioManager.play_ui()
+	var vbox := _new_root()
+
+	var heading := Label.new()
+	heading.text = "SETTINGS"
+	heading.add_theme_font_size_override("font_size", 56)
+	heading.add_theme_color_override("font_color", Color(1, 0.96, 0.86))
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(heading)
+
+	vbox.add_child(_audio_row("MUSIC", Settings.music_volume, Settings.music_on,
+		Callable(Settings, "set_music_volume"), Callable(Settings, "set_music_on")))
+	vbox.add_child(_audio_row("SFX", Settings.sfx_volume, Settings.sfx_on,
+		Callable(Settings, "set_sfx_volume"), Callable(Settings, "set_sfx_on")))
+
+	var sect := Label.new()
+	sect.text = "ACCESSIBILITY"
+	sect.add_theme_font_size_override("font_size", 22)
+	sect.add_theme_color_override("font_color", Color(0.6, 0.7, 0.85))
+	sect.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(sect)
+
+	vbox.add_child(_shake_row())
+	vbox.add_child(_toggle_row("HAPTICS", Settings.haptics_on,
+		Callable(Settings, "set_haptics_on")))
+	vbox.add_child(_toggle_row("REDUCE FLASHES", Settings.reduce_flashes,
+		Callable(Settings, "set_reduce_flashes")))
+
+	var back := Button.new()
+	back.text = "BACK"
+	back.custom_minimum_size = Vector2(220, 56)
+	back.add_theme_font_size_override("font_size", 30)
+	back.pressed.connect(_show_title)
+	vbox.add_child(back)
+
+
+## A combined "label + volume slider + on/off" row (matches the pause menu).
+func _audio_row(label_text: String, vol: float, on: bool, vol_cb: Callable, on_cb: Callable) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	row.custom_minimum_size = Vector2(560, 0)
+
+	var name_label := Label.new()
+	name_label.text = label_text
+	name_label.custom_minimum_size = Vector2(190, 0)
+	name_label.add_theme_font_size_override("font_size", 28)
+	row.add_child(name_label)
+
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.01
+	slider.value = vol
+	slider.custom_minimum_size = Vector2(240, 40)
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.value_changed.connect(func(v: float): vol_cb.call(v))
+	row.add_child(slider)
+
+	var toggle := CheckButton.new()
+	toggle.button_pressed = on
+	toggle.toggled.connect(func(p: bool): on_cb.call(p))
+	row.add_child(toggle)
+	return row
+
+
+## The screen-shake intensity row: a 0–100% slider with a live readout that also
+## fires a little trauma each step so you feel the strength you're choosing.
+func _shake_row() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	row.custom_minimum_size = Vector2(560, 0)
+
+	var name_label := Label.new()
+	name_label.text = "SCREEN SHAKE"
+	name_label.custom_minimum_size = Vector2(190, 0)
+	name_label.add_theme_font_size_override("font_size", 28)
+	row.add_child(name_label)
+
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.value = Settings.shake_scale
+	slider.custom_minimum_size = Vector2(220, 40)
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(slider)
+
+	var pct := Label.new()
+	pct.text = "%d%%" % roundi(Settings.shake_scale * 100.0)
+	pct.custom_minimum_size = Vector2(70, 0)
+	pct.add_theme_font_size_override("font_size", 26)
+	pct.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(pct)
+
+	slider.value_changed.connect(func(v: float):
+		Settings.set_shake_scale(v)
+		pct.text = "%d%%" % roundi(v * 100.0)
+		Juice.add_trauma(0.5))  # live preview — scaled by the new value itself
+	return row
+
+
+## A label + CheckButton toggle row for a boolean accessibility option.
+func _toggle_row(label_text: String, on: bool, setter: Callable) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	row.custom_minimum_size = Vector2(560, 0)
+
+	var name_label := Label.new()
+	name_label.text = label_text
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.add_theme_font_size_override("font_size", 28)
+	row.add_child(name_label)
+
+	var toggle := CheckButton.new()
+	toggle.button_pressed = on
+	toggle.toggled.connect(func(p: bool):
+		setter.call(p)
+		AudioManager.play_ui())
+	row.add_child(toggle)
+	return row
