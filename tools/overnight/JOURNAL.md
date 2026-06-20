@@ -942,3 +942,51 @@ stronger"? Tune: `MAX_GUNS`/`MIN_COOLDOWN`/`PELLET_CAP`, the `_fire_streams` `fa
 probability. The locked spec's stated target was worst-case projectile rate dropping to ~55–60/s;
 that follows from MAX_GUNS=6 × the 0.05 s floor but was not directly profiled this iter — worth a
 real frame-pacing check under max carnage (ties into the still-open pooling item).
+
+
+---
+
+## 2026-06-20 — iter 17 (build): gun slot-cap feedback cue
+
+**Mode:** build (iter 17, not a ×4 audit). Picked the highest-leverage *safe* item: the
+iter-16 follow-up **"gun slot-cap feedback cue."** The other NOW items were either flagged
+high-regression-risk needing human oversight (object pooling) or larger scope (daily challenge,
+tutorial v2). This finishes a shipped-but-invisible feature to polish, exactly the brief's
+"add the juice, don't leave it bare."
+
+**Problem:** iter 16 added `MAX_GUNS=6`. When you pick up a 7th NEW gun it silently redirects
+into deepening your lowest-level owned gun (good design — pickup still rewards you), but the
+player gets **zero** feedback, so it reads as a dropped pickup ("why didn't the new gun appear?").
+
+**Shipped:**
+- `GunManager.gd`: new `signal gun_redirected(target_id, new_level)`. `add_gun` tracks a
+  `redirected` bool (set when the over-cap branch swaps `id` to `_lowest_level_owned()`) and emits
+  the signal after `guns_changed`, carrying the gun it deepened + its new level. No behavior change
+  to the redirect logic itself — purely additive notification.
+- `HUD.gd`: connects `gun_redirected` → `_on_gun_redirected`. On redirect: a "MAX GUNS · <GUN> ▸
+  LV<n>" toast pops in above the left-edge gun panel (font 22, tinted toward the redirected gun's
+  color, snap-in pop → 0.95s hold → fade+rise out), the gun panel itself punches (1.16→1.0 BACK
+  ease) to pull the eye to the row that grew, and `Juice.haptic(18)` fires a light tick so it reads
+  as a reward. Also added a persistent slot-count header — `▣ N/6 GUNS` in warm amber leads the
+  gun panel (`_refresh_powerups`) once `owned.size() >= MAX_GUNS`, so the cap is legible *before*
+  you hit the redirect.
+
+**Files touched:** `scripts/autoload/GunManager.gd` (signal decl + 2-line emit in `add_gun`),
+`scenes/ui/HUD.gd` (signal connect + `_on_gun_redirected` + slot-count header line). Plus
+`BACKLOG.md` + this journal. No spawner/projectile/collision changes.
+
+**Verified (per CLAUDE.md):**
+- Clean headless boot, no `error|script|parse|invalid|shader` (ignored "resources still in use").
+- Exercised via the documented `Main._ready` swap (`_redirecttest`): owned 6 distinct guns, then
+  added a 7th NEW gun (MINIGUN). Result: `gun_redirected` fired `PISTOL LV2` (PISTOL = first
+  level-1 gun in insertion order), `owned.size()` stayed **6**, `has("MINIGUN")==false`, no script
+  errors. The HUD's `_on_gun_redirected` also ran in-scene (HUD node present) with no errors,
+  proving the toast/punch/haptic path is safe. Swap restored from `/tmp/Main.gd.bak` (grep confirms
+  `_redirecttest` gone, `_front_end.begin()` back) + re-ran a clean headless boot (no matches).
+
+**Unverified / for human playtest:** Visual placement & timing of the toast are GPU/play-
+unconfirmed (headless dummy renderer doesn't truly composite tweens). The toast sits at
+`(22, 78)` just above the panel's y=104 — check it doesn't collide with the XP bar / biome banner
+on a real device, and that 0.95s hold is long enough to read mid-chaos. The `▣ N/6 GUNS` header
+only ever shows at exactly 6/6 today (MAX_GUNS=6); if MAX_GUNS changes it auto-tracks. Tune toast
+font/hold/haptic-ms to taste.

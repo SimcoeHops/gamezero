@@ -70,6 +70,7 @@ func _ready() -> void:
 	ProgressionManager.near_miss.connect(_on_near_miss)
 	PowerUpManager.powerups_changed.connect(_update_powerups)
 	GunManager.guns_changed.connect(_update_powerups)
+	GunManager.gun_redirected.connect(_on_gun_redirected)
 	PowerUpManager.star_started.connect(_on_star_started)
 	PowerUpManager.star_ended.connect(_on_star_ended)
 	PowerUpManager.pickup_announced.connect(_on_pickup_announced)
@@ -461,12 +462,54 @@ func _update_powerups() -> void:
 		tw.tween_property(_powerup_rt, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
+## The weapon-slot cap redirected an over-cap NEW pickup into deepening an owned
+## gun. Without a cue the player just sees "the new gun didn't appear" and reads it
+## as a dropped pickup. So: a brief toast above the gun panel naming what leveled,
+## plus a punch on the panel to pull the eye to the row that grew.
+func _on_gun_redirected(target_id: String, new_level: int) -> void:
+	var nm := GunManager.gun_name(target_id)
+	var col := GunManager.gun_color(target_id)
+	var l := Label.new()
+	l.text = "MAX GUNS · %s ▸ LV%d" % [nm, new_level]
+	l.add_theme_font_size_override("font_size", 22)
+	l.add_theme_color_override("font_color", col.lerp(Color.WHITE, 0.4))
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	l.add_theme_constant_override("shadow_offset_x", 1)
+	l.add_theme_constant_override("shadow_offset_y", 1)
+	# Pinned just above the left-edge power-up/gun panel (which sits at y=104).
+	l.position = Vector2(22, 78)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(l)
+	l.modulate.a = 0.0
+	l.pivot_offset = Vector2.ZERO
+	l.scale = Vector2(0.85, 0.85)
+	var tw := create_tween()
+	tw.tween_property(l, "modulate:a", 1.0, 0.12)
+	tw.parallel().tween_property(l, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.95)
+	tw.tween_property(l, "modulate:a", 0.0, 0.35)
+	tw.parallel().tween_property(l, "position:y", l.position.y - 18.0, 0.35).set_ease(Tween.EASE_IN)
+	tw.tween_callback(l.queue_free)
+	# Punch the gun panel so the eye lands on the loadout that just deepened.
+	if _powerup_rt and _powerup_rt.visible:
+		_powerup_rt.pivot_offset = Vector2.ZERO
+		var ptw := create_tween()
+		_powerup_rt.scale = Vector2(1.16, 1.16)
+		ptw.tween_property(_powerup_rt, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# A light haptic tick so the redirect still registers as a reward, not a miss.
+	Juice.haptic(18)
+
+
 ## Rebuilds the vertical power-up list with live countdowns (called every frame).
 func _refresh_powerups() -> void:
 	if _powerup_rt == null:
 		return
 	var lines: Array[String] = []
 	var blink := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
+	# Weapon-slot count, shown once the loadout is full so the cap is legible (a new
+	# gun pickup now deepens an owned gun instead of opening a 7th slot).
+	if GunManager.owned.size() >= GunManager.MAX_GUNS:
+		lines.append("[color=#ffcf8a]▣ %d/%d GUNS[/color]" % [GunManager.owned.size(), GunManager.MAX_GUNS])
 	# Owned auto-fire guns lead the list — they're the core of the loadout.
 	for s in GunManager.status():
 		var nm: String = s["name"]

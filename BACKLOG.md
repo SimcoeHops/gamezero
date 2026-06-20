@@ -48,12 +48,10 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       +0.5 m corridor/level, MORTAR +1 m AOE/level capped +4 m, `PELLET_CAP=9`), and the ≥3-owned
       ~60/40 upgrade-lead bias. Stale "30s layer" comments fixed to 20 s.
 
-- [ ] **Gun slot-cap feedback cue** (follow-up to iter 16): when `add_gun` redirects an over-cap
-      NEW pickup into the lowest-level owned gun, the player has no idea why the new gun "didn't
-      appear." Add a brief HUD toast/floater ("MAX GUNS · RAPID +1") + a small punch on that gun's
-      panel row, and consider showing the slot count ("6/6 GUNS") on the HUD gun panel. Small,
-      scoped; makes the (good) slot-cap behavior legible. `add_gun` already knows the redirect
-      target — emit a signal or reuse `guns_changed` with a one-shot flag.
+- [x] **Gun slot-cap feedback cue** — DONE iter 17 (see Done): new `GunManager.gun_redirected`
+      signal; HUD shows a "MAX GUNS · <GUN> ▸ LV<n>" toast above the gun panel + a panel punch +
+      light haptic on every over-cap redirect, and a "N/6 GUNS" slot-count header appears on the
+      gun panel once the loadout is full.
 
 - [ ] **Tutorial polish v2 + bullet-time/weapon teaching** (follow-up to iter-12 onboarding):
       the first-run tutorial teaches move/jump/stomp; extend the same pattern to the bullet-time
@@ -160,6 +158,16 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Gun slot-cap feedback cue** (2026-06-20, iter 17) — made the (good but invisible) iter-16
+      slot cap legible. New `GunManager.gun_redirected(target_id, new_level)` signal fires whenever an
+      over-cap NEW pickup is redirected into deepening the lowest-level owned gun. HUD reacts: a
+      "MAX GUNS · <GUN> ▸ LV<n>" toast pops above the left-edge gun panel (in the redirected gun's
+      color), the panel punches to draw the eye to the row that grew, and a light haptic fires so it
+      reads as a reward not a dropped pickup. Also a persistent "N/6 GUNS" slot-count header now leads
+      the gun panel once `owned.size() >= MAX_GUNS`. Files: `GunManager.gd` (signal + emit in
+      `add_gun`), `HUD.gd` (`_on_gun_redirected` + header line in `_refresh_powerups`). Verified
+      headless via the `Main._ready` swap: redirect fired `PISTOL LV2`, owned stayed 6, MINIGUN not
+      added, no script errors; swap restored.
 - [x] **Gun scaling: tame runaway layering (LOCKED SPEC)** (2026-06-20, iter 16) — implemented the
       human-locked spec to bound the Vampire-Survivors runaway while keeping escalating power as the
       core fun (#1 Core fun / power-fantasy pillar). The runaway was **uncapped simultaneous

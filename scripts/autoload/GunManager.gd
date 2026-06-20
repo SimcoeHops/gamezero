@@ -13,6 +13,12 @@ extends Node
 ## Emitted whenever the owned guns change (pickup / level-up / reset).
 signal guns_changed()
 
+## Emitted when a brand-new gun picked up beyond [constant MAX_GUNS] is redirected
+## into deepening an already-owned gun instead of opening a 7th slot. Carries the
+## gun it leveled + that gun's new level, so the HUD can explain to the player why
+## the new gun "didn't appear" (otherwise the slot cap reads as a dropped pickup).
+signal gun_redirected(target_id: String, new_level: int)
+
 ## Firing patterns.
 enum Pattern { SINGLE, BURST, SHOTGUN, LASER, MORTAR, SPREAD, MINIGUN, RAIL, NET }
 
@@ -150,10 +156,12 @@ func add_gun(id: String) -> int:
 		return 0
 	# Weapon-slot cap: a brand-new gun beyond the cap is redirected into a level on
 	# the lowest-level owned gun, so the pickup still rewards you — deeper, not wider.
+	var redirected := false
 	if not owned.has(id) and owned.size() >= MAX_GUNS:
 		var low_id := _lowest_level_owned()
 		if low_id != "":
 			id = low_id
+			redirected = true
 	var arr: Array = _stacks.get(id, [])
 	if arr.size() < MAX_LEVEL:
 		arr.append(GUN_DURATION)
@@ -170,6 +178,8 @@ func add_gun(id: String) -> int:
 		# Start ready to fire so a fresh pickup feels instant.
 		_fire_state[id] = {"cd": 0.0, "shots_left": int(GUNS[id].get("burst_count", 0))}
 	guns_changed.emit()
+	if redirected:
+		gun_redirected.emit(id, arr.size())
 	return arr.size()
 
 
