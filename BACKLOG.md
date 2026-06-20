@@ -24,11 +24,10 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       higher regression risk than usual (lifecycle/state-reset bugs can pass smoke yet break
       feel) — do it carefully, exercise heavily headless, ideally with human oversight.
 
-- [ ] **Dynamic difficulty (light rubber-banding)** (Difficulty #8): the spawn/speed ramp is
-      fully open-loop (pure `time_elapsed`). Add a gentle DDA signal — e.g. nudge spawn density
-      / gap generosity from recent near-miss rate, dodge streak, and time-since-last-crash — so
-      a struggling player gets a hair more breathing room and a flow-state expert gets packed
-      harder. Keep it subtle and always honor the dodgeable-gap guarantee. Pairs with flow_heat.
+- [x] **Dynamic difficulty (light rubber-banding)** — DONE iter 14 (see Done): bounded signed
+      `difficulty_bias` in GameManager (dodges/near-misses press up, a crash drops toward relief,
+      decays to neutral), mapped to `difficulty_pressure()`; CarSpawner nudges spawn interval
+      (±~12%) and shaves/adds one car at the extremes — dodgeable-gap guarantee preserved.
 
 - [ ] **DECIDE: timed guns vs. permanent loadout** (Core fun #1 / power-fantasy pillar): guns
       now expire after 20 s (GunManager `GUN_DURATION`, stacking layers). This fights the
@@ -119,8 +118,9 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 - [ ] Game-over recap polish: lean into the JourneyMap, animate stat count-ups, clear CTAs.
 
 ## DIFFICULTY & BALANCE
-- [ ] Difficulty-curve tuning pass: smooth the speed/spawn ramp; ensure deaths feel fair
-      (always a dodgeable gap); consider light dynamic difficulty.
+- [x] Light dynamic difficulty — DONE iter 14 (see NOW/Done). Follow-up: a broader
+      difficulty-curve tuning pass (smooth the speed/spawn ramp end-to-end) + playtest the DDA
+      feel and tune `DDA_*` constants / the 0.32/0.78 pressure thresholds in CarSpawner.
 - [ ] Gun balance pass so every gun has a reason to be picked; no dominant/useless options.
 
 ## PERFORMANCE & STABILITY (protect the 60fps spell)
@@ -141,6 +141,26 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Dynamic difficulty — light, bounded rubber-banding** (2026-06-19, iter 14) — attacks
+      the joint-low #8 Difficulty (was 3): the spawn/speed ramp was fully open-loop (pure
+      `time_elapsed`), so a struggling player and a flow-state expert got identical traffic. Now
+      a single signed `difficulty_bias` in `[-1,+1]` (GameManager) tracks recent performance:
+      **+0.018/dodge**, **+0.05/near-miss** (skill flexes press up), **−0.65 on crash** (via
+      `cool_flow`, the clearest "struggling" signal → relief), **decays 0.06/s toward neutral**
+      when quiet, and a continue clamps to a **−0.6 relief floor** so a comeback isn't brutal.
+      Reset to 0 in `start_game`. Mapped to `difficulty_pressure()` (0..1, 0.5 = the plain time
+      ramp). CarSpawner reads it: spawn interval ×`lerp(1.14,0.90,p)` (struggling gets ~12% more
+      time, flow ~10% less), **+1 car** when `p>0.78` (deep flow) and **−1 car** when `p<0.32`
+      (struggling) — both still clamped to `[1, lanes−1]` AND after the existing high-speed
+      easing, so the **always-dodgeable-gap guarantee is never violated**. Kept deliberately
+      subtle and SEPARATE from `flow_heat` so the music/visual feel that consumes flow_heat is
+      untouched. Files: `scripts/autoload/GameManager.gd` (bias field + consts, gains in
+      dodge/near-miss handlers, drop in `cool_flow`, relief in `do_continue`, decay in
+      `_process`, reset in `start_game`, `difficulty_pressure()`), `scenes/car/CarSpawner.gd`
+      (interval mult + wave-size nudge). Verified headless via the `Main._ready` swap: start
+      bias 0.0/p0.50 → 20 dodges+6 near-miss bias 0.66/p0.83 (>0.78) → crash bias 0.01/p0.505 →
+      2nd crash bias −0.64/p0.18 (<0.32) → 3 s decay from 0.9→0.72 → continue floor p0.20. Clean
+      boot, no `error|script|parse|invalid|shader`. **Playtest/tune** the constants + thresholds.
 - [x] **Coin pickup juice — "delicious" collection** (2026-06-19, iter 13) — closes the gap
       flagged in FOUR consecutive audits (#3 Juice): coin collection was the one dull moment in
       a loud game (single fixed-pitch blip + 0.04 trauma + instant free; magnet only with the

@@ -145,6 +145,21 @@ const FLOW_RAMP := 1.0 / 70.0          ## base seconds-to-max of clean survival
 const FLOW_COMBO_GAIN := 0.004         ## extra heat/sec per combo tier above ×1
 var flow_heat: float = 0.0
 
+## --- Dynamic difficulty assist (light, bounded rubber-banding) ---
+## A single signed bias in [-1, +1]; 0 leaves the open-loop time ramp untouched.
+## It climbs as the player demonstrates control (dodges, near-misses) so an expert
+## in flow gets packed a hair tighter, and it drops hard on a crash so a struggling
+## player gets a little breathing room. Always SUBTLE, and CarSpawner's
+## dodgeable-gap guarantee is never violated regardless of this value. Read live by
+## CarSpawner via [method difficulty_pressure]; kept separate from flow_heat so the
+## music/visual feel that consumes flow_heat is unaffected.
+const DDA_DODGE_GAIN := 0.018          ## per dodge — steady control nudges pressure up
+const DDA_NEARMISS_GAIN := 0.05        ## per near-miss — a skill flex presses harder
+const DDA_CRASH_DROP := 0.65           ## a crash yanks toward "give me a break"
+const DDA_CONTINUE_RELIEF := -0.6      ## a revived run resumes with breathing room
+const DDA_DECAY := 0.06                ## per-sec pull back toward neutral (0)
+var difficulty_bias: float = 0.0
+
 ## --- Run level / XP (Vampire-Survivors "level up, pick a weapon") ---
 ## Dodges are XP. Filling the bar triggers a level-up card pick. Each level costs
 ## a little more than the last so the cadence stretches as the run gets deeper.
@@ -191,6 +206,9 @@ func _process(delta: float) -> void:
 		# Heat creeps up the longer this run stays clean; a hot combo stokes it.
 		var rate := FLOW_RAMP + FLOW_COMBO_GAIN * float(combo - 1)
 		flow_heat = minf(flow_heat + rate * delta, 1.0)
+		# DDA bias relaxes back toward neutral when nothing notable happens, so a
+		# quiet stretch settles to the plain time ramp rather than staying biased.
+		difficulty_bias = move_toward(difficulty_bias, 0.0, DDA_DECAY * delta)
 		# Cool the rapid-collect coin streak once the player stops grabbing.
 		if _coin_streak_timer > 0.0:
 			_coin_streak_timer -= delta
@@ -206,6 +224,7 @@ func start_game() -> void:
 	combo = 1
 	_combo_timer = 0.0
 	flow_heat = 0.0
+	difficulty_bias = 0.0
 	coin_streak = 0
 	_coin_streak_timer = 0.0
 	run_level = 1
@@ -301,6 +320,9 @@ func do_continue() -> void:
 	combo = 1
 	_combo_timer = 0.0
 	flow_heat = 0.0
+	# Resume a revived run with real breathing room — the crash already dropped the
+	# bias; clamp it to a firm relief floor so the comeback isn't instantly brutal.
+	difficulty_bias = minf(difficulty_bias, DDA_CONTINUE_RELIEF)
 	combo_changed.emit(combo)
 	coins_changed.emit(coins)
 	_save_progress()
@@ -344,6 +366,8 @@ func add_points(base: int) -> void:
 
 func _on_dodge_registered(_total: int) -> void:
 	add_points(DODGE_POINTS)
+	# Steady dodging is evidence of control — nudge the difficulty assist up.
+	difficulty_bias = minf(difficulty_bias + DDA_DODGE_GAIN, 1.0)
 	_advance_level_progress()
 
 
@@ -370,12 +394,23 @@ func _on_near_miss() -> void:
 	_combo_timer = COMBO_WINDOW
 	combo_changed.emit(combo)
 	add_points(NEAR_MISS_POINTS)
+	# A near-miss is a deliberate skill flex — press the difficulty a touch harder.
+	difficulty_bias = minf(difficulty_bias + DDA_NEARMISS_GAIN, 1.0)
 
 
 ## Snuffs the flow-state heat — called the instant the player crashes so the world
 ## visibly cools (music, glow, grade, density all drop back). Survival re-earns it.
 func cool_flow() -> void:
 	flow_heat = 0.0
+	# The clearest "struggling" signal there is: a crash yanks the difficulty assist
+	# toward relief so a recovering player (after a continue) gets a little more room.
+	difficulty_bias = maxf(difficulty_bias - DDA_CRASH_DROP, -1.0)
+
+
+## DDA pressure mapped to a clean 0..1 (0 = max relief, 0.5 = neutral / plain time
+## ramp, 1 = max pressure). Read by CarSpawner to nudge wave size + spawn cadence.
+func difficulty_pressure() -> float:
+	return clampf(difficulty_bias * 0.5 + 0.5, 0.0, 1.0)
 
 
 ## Fraction (0..1) of the combo "heat" remaining before it cools back to ×1 — the

@@ -137,8 +137,12 @@ func _process(_delta: float) -> void:
 	_current_speed = minf(base_speed + elapsed * speed_acceleration, max_speed) * PowerUpManager.speed_multiplier()
 	GameManager.highway_speed = _current_speed
 
-	# Scale spawn interval over time
-	var interval := maxf(base_spawn_interval - elapsed * interval_decay, min_spawn_interval)
+	# Scale spawn interval over time, then apply a light dynamic-difficulty nudge:
+	# a struggling player (low pressure) gets a slightly longer gap between waves, a
+	# player in deep flow (high pressure) a slightly tighter one. Subtle (±~12%) and
+	# still clamped to the min-interval floor.
+	var dda_mult := lerpf(1.14, 0.90, GameManager.difficulty_pressure())
+	var interval := maxf((base_spawn_interval - elapsed * interval_decay) * dda_mult, min_spawn_interval)
 	_spawn_timer.wait_time = interval
 
 	# Update highway scroll speed
@@ -179,13 +183,26 @@ func _on_spawn_timer_timeout() -> void:
 	var elapsed := GameManager.time_elapsed
 	var max_cars := clampi(1 + int(elapsed / difficulty_ramp_seconds), 1, max_open)
 
+	# --- Dynamic difficulty assist (light): nudge wave size by recent performance.
+	# An expert in deep flow may meet one extra car; the speed easing below and the
+	# final clamp both still hold, so a dodgeable gap is ALWAYS guaranteed.
+	var pressure := GameManager.difficulty_pressure()  # 0..1, 0.5 = neutral
+	if pressure > 0.78 and max_cars < max_open:
+		max_cars += 1
+
 	# Ease off the traffic once the game is genuinely fast — speed alone is the
 	# challenge by then, and packed lanes start to feel unfair.
 	if _current_speed > 40.0:
 		max_cars = mini(max_cars, max_open - 1)
 	if _current_speed > 55.0:
 		max_cars = mini(max_cars, max_open - 2)
-	max_cars = maxi(max_cars, 1)
+
+	# Relief: a clearly struggling player (just crashed / gone quiet) gets a hair
+	# more room — one fewer car in the densest waves.
+	if pressure < 0.32:
+		max_cars -= 1
+
+	max_cars = clampi(max_cars, 1, max_open)
 
 	var count := randi_range(1, max_cars)
 

@@ -748,3 +748,64 @@ The **"+1" floater** placement (top-right, under the `◎` counter) and the stre
 real resolution. All knobs are the named constants. Low-risk note: the floater + sparkle add a
 transient `Label`/`CPUParticles3D` per coin (both self-free) — negligible, but it's the first
 per-pickup allocation on the hot coin path, so it's worth a glance if/when the pooling item lands.
+
+---
+
+## 2026-06-19 — Dynamic difficulty: light, bounded rubber-banding (iter 14, Build mode)
+
+**What & why:** Attacked the joint-low rubric floor **#8 Difficulty & balance (3)** with the
+top open NOW item. The spawn/speed ramp was **fully open-loop** (pure `time_elapsed`) — a
+player barely surviving and a player in deep flow got identical traffic, so deaths could feel
+unfair on the way up and the ceiling never tightened for experts. Picked it over the two other
+floors deliberately: **#9 pooling** is flagged high-regression-risk (lifecycle bugs pass smoke
+yet break feel) — wrong call for an unsupervised overnight iter; **DECIDE timed-guns** needs a
+human. DDA is additive, bounded, and safe: it layers a small signed nudge on top of the
+existing ramp and can only move within hard clamps, so worst case it does *less* than intended,
+never something broken.
+
+**Design (kept deliberately subtle & invisible — visible rubber-banding feels patronizing):**
+A single signed `difficulty_bias` in `[-1, +1]` on GameManager, 0 = the untouched time ramp.
+- **+0.018 per dodge**, **+0.05 per near-miss** — steady control / skill flexes press it up.
+- **−0.65 on crash** (in `cool_flow()`, the canonical crash hook, already wired from Main) —
+  the clearest "struggling" signal → swing toward relief.
+- **decays 0.06/s toward 0** in `_process` when nothing notable happens (a quiet stretch
+  settles back to the plain ramp rather than staying biased).
+- **continue** clamps to a firm **−0.6 relief floor** so a revived comeback isn't instantly
+  brutal; **reset to 0** in `start_game`.
+- Mapped to `difficulty_pressure()` → 0..1 (0 relief, 0.5 neutral, 1 pressure).
+
+Crucially kept **separate from `flow_heat`** (which several systems consume for music/visual
+feel) so none of that feel changes — DDA is its own narrow concern.
+
+**CarSpawner consumption (both paths preserve the always-dodgeable-gap guarantee):**
+- Spawn interval ×`lerp(1.14, 0.90, pressure)` — struggling gets ~12% more time between waves,
+  deep flow ~10% less; still clamped to `min_spawn_interval`.
+- Wave size: **+1 car** when `pressure > 0.78` (applied *before* the existing high-speed easing
+  so speed-easing still wins late), **−1 car** when `pressure < 0.32`; final
+  `clampi(max_cars, 1, lanes−1)` guarantees a gap regardless.
+
+**Files touched:** `scripts/autoload/GameManager.gd` (`difficulty_bias` + 5 consts; gains in
+`_on_dodge_registered`/`_on_near_miss`; drop in `cool_flow`; relief in `do_continue`; decay in
+`_process`; reset in `start_game`; new `difficulty_pressure()`), `scenes/car/CarSpawner.gd`
+(interval mult in `_process` + wave-size nudge in `_on_spawn_timer_timeout`), `BACKLOG.md`,
+this journal.
+
+**Verified (per CLAUDE.md):** Clean headless boot, no `error|script|parse|invalid|shader`
+(ignored "resources still in use at exit"). Exercised the full signal chain via the documented
+`Main._ready` swap (`_ddatest`, since the front-end never auto-starts headless): start
+**bias 0.000 / pressure 0.500** → 20 dodges + 6 near-miss **bias 0.660 / p 0.830** (crosses the
+0.78 pressure threshold) → crash **bias 0.010 / p 0.505** → 2nd crash **bias −0.640 / p 0.180**
+(crosses the 0.32 relief threshold) → 3 s of decay from 0.9 → **0.720** → continue with prior
+bias 0.2 → **−0.600 / p 0.200** (relief floor held). All clamps and thresholds behave; both
+realistic-play extremes are reachable. Restored `Main.gd` from `/tmp/Main.gd.bak` (grep confirms
+`_ddatest`/`DDATEST` gone, `_front_end.begin()` back) and re-ran a clean headless boot.
+
+**Unverified / risk — human should playtest (feel is the whole point and is GPU/play-unconfirmed):**
+the magnitudes are first guesses. Does the relief after a crash/continue read as *fair* without
+feeling like the game went easy on you? Does the deep-flow +1 car land as "the game noticed I'm
+good" or just "suddenly harder"? Tune the named knobs: `DDA_DODGE_GAIN`/`DDA_NEARMISS_GAIN`/
+`DDA_CRASH_DROP`/`DDA_CONTINUE_RELIEF`/`DDA_DECAY` in GameManager and the `lerpf(1.14, 0.90, …)`
+range + the `0.78`/`0.32` thresholds in CarSpawner. Note the system is intentionally **invisible**
+(no HUD tell) — if it ever feels off it'll be hard to diagnose by eye; the print harness in the
+`_ddatest` swap is the way to re-inspect the numbers. Follow-up logged: a broader end-to-end
+difficulty-curve tuning pass once this is playtested.
