@@ -454,4 +454,5 @@ func _play_shot(gun: Dictionary) -> void:
 	if pattern == Pattern.MINIGUN or pattern == Pattern.BURST:
 		if randf() > 0.4:
 			return
-	AudioManager.play_laser()
+	# Each gun has its own voice so a stacked loadout sounds like distinct weapons.
+	AudioManager.play_gun_shot(pattern)

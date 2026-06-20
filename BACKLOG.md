@@ -26,11 +26,6 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       ("near-miss 20 cars", "reach Neon", "own 4 guns at once") with a coin reward + a
       visible streak counter. Seed the daily from the date so it's deterministic. Surface
       on the front-end and tick progress live on the HUD. Strongest runner retention driver.
-- [ ] **Per-gun distinct fire SFX** (Audio #5 — quick, high-impact win): every gun
-      currently calls `AudioManager.play_laser`, so the build-a-loadout power fantasy
-      sounds identical no matter what you stack. Give each `Pattern` its own voice
-      (pistol pop, shotgun boom, minigun hose, mortar thunk+boom, railgun crack, laser
-      zap). Pitch/volume per pattern; route through `_play`. Big guns should *thump*.
 - [ ] **Accessibility & options screen** (Accessibility #10 — cheap, expected at this bar):
       add a SETTINGS panel (front-end + pause) with screen-shake intensity (0–100%, scales
       `Juice.add_trauma`/`kick_fov`), a haptics on/off toggle, and a reduce-flashes toggle
@@ -123,6 +118,23 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Per-gun distinct fire SFX** (2026-06-19, iter 5) — every gun used to call
+      `AudioManager.play_laser`, so a stacked loadout sounded like one repeated zap.
+      Added per-gun shot voices: new banks `_g_low`/`_g_zap`/`_g_three`/`_g_trash`
+      (scanned from the digital kit: low tones, zaps, three-tones, spaceTrash) and a
+      `AudioManager.play_gun_shot(pattern)` dispatch with a pitch/layer recipe per
+      `Pattern` — PISTOL crisp pop, RAPID light fast pops, MINIGUN high hose, SHOTGUN
+      sub-thump+spray BOOM, LASER zap+low body, SPREAD tonal triple, MORTAR hollow
+      launch thoomp (its explosion keeps its own boom), RAILGUN deep crack+sub-boom+metal
+      tail, NET whoosh+fizz. Each branch falls back to `_laser` if a kit is missing.
+      `GunManager._play_shot` now routes to `play_gun_shot(pattern)` (rapid-gun throttle
+      kept). Files: `AudioManager.gd`, `GunManager.gd`. Verified: clean headless boot, then
+      exercised ALL 9 guns firing via the `Main._ready` swap both headless and windowed
+      (real AudioServer) — every pattern fired over ~3.6s with zero errors; swap restored
+      + re-verified clean.
+      - [ ] Human playtest: the actual *mix* — relative loudness of each gun, whether big
+            guns (shotgun/railgun/mortar) thump enough vs the rapid guns, and whether a
+            full 9-gun stack is a satisfying chord or mush. Tune dB/pitch in `play_gun_shot`.
 - [x] **Game-over recap: "NEW BEST!" celebration + animated count-ups** (2026-06-19, iter 4
       audit ship) — the recap was static text with a fragile pulsing "NEW RECORD" label.
       Now: the hero SCORE counts up from 0 with a rising-pitch blip (`AudioManager.

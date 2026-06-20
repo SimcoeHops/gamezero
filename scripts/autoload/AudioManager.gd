@@ -27,6 +27,12 @@ var _glass: Array[AudioStream] = []   ## glass shatter layer
 var _footsteps: Array[AudioStream] = []  ## running pitter-patter (speed-scaled)
 var _step_timer: float = 0.0
 var _laser: Array[AudioStream] = []
+# Per-gun shot voices — each gun pattern gets its own recipe so a stacked loadout
+# reads as a chord of different weapons firing, not one repeated laser.
+var _g_low: Array[AudioStream] = []     ## low descending tones (mortar thunk, big-gun body)
+var _g_zap: Array[AudioStream] = []     ## sharp electric zaps (laser, railgun crack)
+var _g_three: Array[AudioStream] = []   ## tonal triple-beeps (spread volley)
+var _g_trash: Array[AudioStream] = []   ## noisy fizz/spray (shotgun, net)
 var _pickup: Array[AudioStream] = []
 var _unlock: Array[AudioStream] = []
 var _whoosh: Array[AudioStream] = []
@@ -131,6 +137,12 @@ func _load_banks() -> void:
 		_smash = _crash
 	_glass = _scan(IMPACTS, "impactGlass_heavy") + _scan(IMPACTS, "impactGlass_medium")
 	_laser = _scan(DIGITAL, "laser")
+	# Per-gun shot voices (fall back to _laser later if a kit is missing).
+	_g_low = _scan(DIGITAL, "lowDown") + _scan(DIGITAL, "lowRandom") + _scan(DIGITAL, "lowThreeTone")
+	_g_zap = _scan(DIGITAL, "zap") + _scan(DIGITAL, "zapTwoTone") \
+		+ _scan(DIGITAL, "zapThreeToneDown") + _scan(DIGITAL, "zapThreeToneUp")
+	_g_three = _scan(DIGITAL, "threeTone")
+	_g_trash = _scan(DIGITAL, "spaceTrash")
 	_pickup = _scan(DIGITAL, "pepSound")
 	_unlock = _scan(DIGITAL, "phaseJump")
 	_whoosh = _scan(DIGITAL, "phaserUp")
@@ -209,6 +221,50 @@ func play_car_hit() -> void:
 
 func play_laser() -> void:
 	_play(_laser, 0.95, 1.15, -6.0)
+
+
+## Distinct firing voice per gun. [param pattern] is a GunManager.Pattern value.
+## Each gun gets its own pitch/layer recipe so stacking guns sounds like a band of
+## weapons, not one repeated zap — big guns thump via low-end layers. Every branch
+## falls back to the laser bank if a particular Kenney sound kit is missing.
+func play_gun_shot(pattern: int) -> void:
+	var zap := _g_zap if not _g_zap.is_empty() else _laser
+	var trash := _g_trash if not _g_trash.is_empty() else _smash
+	match pattern:
+		GunManager.Pattern.SINGLE:
+			# PISTOL — a crisp, bright aimed pop.
+			_play(_laser, 1.12, 1.28, -7.0)
+		GunManager.Pattern.BURST:
+			# RAPID — light, fast, higher & quieter so the stream doesn't fatigue.
+			_play(_laser, 1.42, 1.62, -12.0)
+		GunManager.Pattern.MINIGUN:
+			# MINIGUN — a relentless high hose; very short, quiet pops.
+			_play(_laser, 1.55, 1.9, -13.0)
+		GunManager.Pattern.SHOTGUN:
+			# SHOTGUN — a meaty BOOM: sub-thump + noisy buckshot spray.
+			_play(_crash, 0.55, 0.7, -1.0)
+			_play(trash, 0.7, 0.95, -4.0)
+		GunManager.Pattern.LASER:
+			# LASER — an electric sci-fi zap over a low body layer.
+			_play(zap, 0.8, 1.0, -6.0)
+			_play(_laser, 0.55, 0.7, -13.0)
+		GunManager.Pattern.SPREAD:
+			# SPREAD — a tonal three-way volley.
+			_play(_g_three if not _g_three.is_empty() else _laser, 1.0, 1.2, -7.0)
+		GunManager.Pattern.MORTAR:
+			# MORTAR — a hollow launch THOOMP (its explosion has its own boom).
+			_play(_g_low if not _g_low.is_empty() else _crash, 0.7, 0.85, -3.0)
+		GunManager.Pattern.RAIL:
+			# RAILGUN — a heavy CRACK: deep electric snap + sub-boom + metal tail.
+			_play(zap, 0.5, 0.65, 1.0)
+			_play(_crash, 0.45, 0.58, -2.0)
+			_play(_smash, 0.8, 0.95, -7.0)
+		GunManager.Pattern.NET:
+			# NET — a wide whoosh throw with a soft fizzy spread.
+			_play(_whoosh, 0.85, 1.05, -6.0)
+			_play(trash, 0.9, 1.1, -11.0)
+		_:
+			_play(_laser, 0.95, 1.15, -6.0)
 
 
 func play_pickup() -> void:

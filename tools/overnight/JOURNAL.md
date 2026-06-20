@@ -5,6 +5,47 @@ and anything the human should review or decide. Newest at the bottom.
 
 ---
 
+## 2026-06-19 — Per-gun distinct fire SFX (iter 5, Build mode)
+
+**What & why:** Shipped a top NOW item (Audio #5, flagged "quick, high-impact win") that
+directly serves VISION pillar #3, the build-a-loadout power fantasy. Every gun called
+`AudioManager.play_laser`, so stacking 9 different guns sounded *identical* — the carnage
+looked varied but sounded like one zap on repeat. Now each gun has its own voice, so a full
+loadout reads as a chord of distinct weapons.
+
+**How it works:**
+- `AudioManager`: 4 new SFX banks scanned from the Kenney digital kit — `_g_low`
+  (lowDown/lowRandom/lowThreeTone), `_g_zap` (zap1/2 + zapTwoTone + zapThreeToneUp/Down),
+  `_g_three` (threeTone), `_g_trash` (spaceTrash). New `play_gun_shot(pattern)` dispatches a
+  per-`Pattern` pitch/layer recipe: PISTOL crisp pop, RAPID light/fast/quiet pops, MINIGUN
+  high hose, SHOTGUN sub-thump (`_crash` low) + noisy spray (`_g_trash`) BOOM, LASER zap over
+  a low body layer, SPREAD tonal triple, MORTAR hollow launch *thoomp* (its AOE explosion
+  keeps its own `play_crash` boom — no double-up), RAILGUN deep electric crack + sub-boom +
+  metal tail (a real *thump*), NET whoosh + soft fizz. Every branch falls back to `_laser` if
+  a sound kit is missing (export-safe).
+- `GunManager._play_shot` now calls `AudioManager.play_gun_shot(pattern)` instead of
+  `play_laser`; the existing rapid-gun audio throttle (MINIGUN/BURST 40%) is unchanged.
+  `Main.gd`'s legacy manual-fire weapon still uses `play_laser` (left intact).
+
+**Files touched:** `scripts/autoload/AudioManager.gd`, `scripts/autoload/GunManager.gd`,
+`BACKLOG.md`, `tools/overnight/JOURNAL.md`.
+
+**Verified (per CLAUDE.md):** Clean headless boot (no `error|script|parse|invalid|shader`).
+Exercised via the documented `Main._ready` swap (`start_game` + `add_gun` for ALL 9 guns):
+ran **headless** (220 frames ~3.6s, every gun's cooldown fires at least once incl. the slow
+RAILGUN at 1.6s) and **windowed** (real AudioServer actually plays the streams) — both showed
+`[GUNTEST] owned=[all 9]` with zero errors. Restored `Main.gd` from `/tmp/Main.gd.bak`,
+confirmed test code gone + `_front_end.begin()` back, re-ran a clean headless boot.
+
+**Unverified / risk — human should playtest:** the actual *mix*. dB/pitch values were tuned by
+ear-in-head, not on speakers — check relative loudness, whether big guns thump enough vs the
+rapid hose, and whether a 9-gun stack is a satisfying chord or turns to mush (the SFX pool is
+14 round-robin voices; shotgun/railgun use 2–3 each, so a huge stack may steal voices — likely
+fine but unmeasured). Tune in `AudioManager.play_gun_shot`. spaceTrash's exact character is
+unheard by me.
+
+---
+
 ## 2026-06-19 — Deep audit (iter 4) + game-over "NEW BEST" celebration
 
 **Mode:** Deep-audit (iteration 4 = multiple of 4). Booted clean headless; read the core
