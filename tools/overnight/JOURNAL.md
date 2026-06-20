@@ -541,3 +541,56 @@ readability pillar — gantries at 61 m might feel busy). All gains are small/in
 can be dialed without touching the others. Logged follow-up: a real adaptive-music **filter sweep**
 (low-pass opening up on the Music bus with heat) would be a stronger audio cue than a volume swell
 — skipped this pass to avoid blind mix risk on a no-speakers iteration.
+
+---
+
+## 2026-06-19 — Per-biome environmental particles & atmosphere (iter 11, Build mode)
+
+**What & why:** Shipped the top NOW item — the iter-8 audit's single biggest "asset-flip →
+art-directed" lever (#4 Visual polish, joint-lowest at 3) and a direct hit on VISION pillar #1
+(speed you can feel). The road read as assembled Kenney kits in clean air; now the *air itself*
+has identity and rushes past, so each biome feels like a designed place and the world streams by.
+
+**How it works — one code-built field, restyled per biome:**
+- `scenes/environment/BiomeParticles.gd` (new, no .tscn — built in code so Main can drop it in
+  and style it) extends GPUParticles3D. It fills the volume around/ahead of the camera (box
+  emission, extents 15×7.5×26 at z≈-10) with a soft radial-dot billboard mote, `amount` 170,
+  6 s life with an **alpha-curve fade** (in/hold/out — no spawn/death pops) and `preprocess` 3 s
+  so it boots already full instead of warming up empty.
+- **Speed-reactive:** `_process` sets `speed_scale = lerp(0.55, 2.3, speed_t) + flow*0.5` from
+  `GameManager.highway_speed` — the whole field (motion *and* respawn rate) streams past faster
+  the faster you run, and a hot clean streak (`flow_heat`) drives it harder, tying into iter-10's
+  flow system for cohesion.
+- **Per-biome identity** via a `BIOMES` recipe + `apply_biome(name, instant)`: Downtown pale
+  paper/litter (mix blend, gentle fall), Countryside green leaves/pollen (mix, faster fall + more
+  sway), Industrial HDR-orange **embers** (additive so they bloom through the glow post, *rise*),
+  Neon magenta **motes** (additive, slow drift). Each sets particle color/gravity/scale/velocity/
+  turbulence.
+- **Cross-fades on biome change** (the polish that keeps it from a hard cut): `apply_biome` tweens
+  the process-material `color` and `amount_ratio` (density) over 3 s and applies the new fall
+  direction immediately (eases in as particles recycle); glow biomes flip the draw-pass blend mode
+  to additive. Wired from `Main._apply_theme` (instant on the first theme, tweened on changes), with
+  the node instantiated in `Main._ready`.
+
+**Files touched:** `scenes/environment/BiomeParticles.gd` (new), `scenes/main/Main.gd`,
+`BACKLOG.md`, `tools/overnight/JOURNAL.md`.
+
+**Verified (per CLAUDE.md):** Clean headless **and** windowed boot (no `error|script|parse|invalid|
+shader`; windowed compiles the StandardMaterial3D + curve/gradient textures for real). Exercised
+the full path via the documented `Main._ready` swap (`_biome_test`): `emitting=true amount=170
+ratio≈0.9`; applied all 4 biomes and confirmed each gets the right color, gravity sign (leaves
+fall -1.4/-1.8, embers rise +1.1, neon +0.25), `amount_ratio` (0.55–0.9) and **blend mode flip**
+(0 mix ↔ 1 add for the glow biomes); after a frame of `_process`, `speed_scale` tracked the live
+`highway_speed`+`flow_heat` (rose with speed). Restored `Main.gd` from `/tmp/Main.gd.bak` (grep
+confirms `_biome_test`/`BTEST` gone, `_front_end.begin()` back), re-ran a clean headless boot.
+
+**Unverified / risk — human should playtest (GPU, the *look* is unconfirmed):** density/size per
+biome at real resolution (amount 170, ratios 0.55–0.9 — could read as too sparse or too busy),
+whether the HDR ember/neon colors (1.4–1.5) bloom too hot through the existing glow post, the 3 s
+cross-fade read on a biome change, and especially whether the field ever costs the "readable chaos"
+pillar at top speed + full flow (it's behind/around the play space and faint, but confirm it never
+masks the next obstacle). All knobs live in the `BIOMES` dict + the `speed_scale` range. The item's
+*other half* — a subtle biome-tinted **near-camera haze** — currently leans on the existing themed
+WorldEnvironment fog rather than a new haze pass; logged as a follow-up. Perf: one GPUParticles3D,
+170 particles, unshaded billboard — cheap on desktop, unmeasured on mobile GPU (flag with the other
+GPU-particle items if a perf pass happens).

@@ -15,12 +15,6 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
      lowest cluster is #1 Core fun, #4 Visual polish, #8 Difficulty — all at 3.
      These four items attack those. See the iter-8 JOURNAL scorecard. -->
 
-- [ ] **Per-biome environmental particles & atmosphere** (Visual polish #4): the single biggest
-      "asset-flip → art-directed" jump. Add a speed-reactive GPUParticles3D field per biome —
-      Downtown paper/litter, Countryside leaves/pollen, Industrial embers/smoke, Neon glowing
-      motes — plus a subtle biome-tinted near-camera haze. Cross-fade on theme change. (GPU, so
-      verify the spawn/lifecycle headless then flag the *look* for human playtest.)
-
 - [ ] **Player rim/back light + stronger per-biome grade** (Visual polish #4): a back/rim light
       keyed to the biome accent separates the runner from the road and unifies the Kenney kits
       under one art-direction; push the per-biome color grade (currently only fog/ambient/sun)
@@ -119,6 +113,29 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Per-biome environmental particles & atmosphere** (2026-06-19, iter 11) — the top NOW item
+      and the biggest "asset-flip → art-directed" lever (#4 Visual polish). New
+      `scenes/environment/BiomeParticles.gd` (a code-built GPUParticles3D, no .tscn) fills the
+      volume around/ahead of the camera with a soft-dot mote field that **streams past with speed**
+      (`speed_scale` tracks `GameManager.highway_speed`) and **thickens/brightens with flow_heat**.
+      Per-biome identity via a `BIOMES` recipe + `apply_biome()`: Downtown pale paper/litter
+      (mix blend, falls), Countryside green leaves/pollen (mix, falls, more sway), Industrial
+      HDR-orange embers (additive→blooms, rise), Neon magenta motes (additive, slow). **Cross-fades**
+      on biome change — color + `amount_ratio` + fall direction tween over 3s; glow biomes flip the
+      draw-pass blend mode to additive. Wired in `Main.gd` (instantiated in `_ready`, restyled from
+      `_apply_theme`). Alpha-curve life fade (no pops), radial-gradient dot sprite, `preprocess` so
+      it boots already full. Files: `scenes/environment/BiomeParticles.gd` (new), `scenes/main/Main.gd`.
+      Verified: clean headless + windowed boot (renderer compiled the material/textures); exercised
+      via the `Main._ready` swap — `emitting=true amount=170`, all 4 biomes apply correct
+      color/gravity/`amount_ratio`/blend (mix↔add), and `speed_scale` tracks live highway_speed+flow
+      in `_process`; swap restored + re-verified clean.
+      - [ ] Human playtest (GPU, look unverified): density/size per biome at real res (170 amount,
+            ratios 0.55–0.9), whether embers/neon bloom too hot vs the glow post (HDR colors 1.4–1.5),
+            the 3s cross-fade read, and whether the field ever clutters the "readable chaos" pillar at
+            high speed/flow. Tune the `BIOMES` recipe + `speed_scale` range in BiomeParticles.gd.
+      - [ ] Follow-up (the item's other half): a subtle biome-tinted **near-camera haze** — currently
+            leaning on the existing themed WorldEnvironment fog. A faint additive depth-fog tint pass
+            or a soft near-plane wash could deepen each biome's air without hurting readability.
 - [x] **Flow-state escalation** (2026-06-19, iter 10) — the top NOW item and the logged follow-up
       to iter 9's greed meter (#1 Core fun). The greed combo was a short-term, per-near-miss spike;
       this adds the *long-term* layer the runner was missing: a clean run now visibly **heats up the

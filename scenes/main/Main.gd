@@ -26,6 +26,7 @@ extends Node3D
 var _camera_base_pos: Vector3
 var _base_fov: float = 65.0
 var _camera_roll: float = 0.0
+var _biome_particles: GPUParticles3D
 
 
 func _ready() -> void:
@@ -60,6 +61,11 @@ func _ready() -> void:
 
 	ProgressionManager.ability_unlocked.connect(_on_unlock)
 	ProgressionManager.near_miss.connect(_on_near_miss)
+
+	# Ambient per-biome atmosphere field (paper/leaves/embers/motes) that
+	# streams past with speed and recolors on biome change.
+	_biome_particles = (load("res://scenes/environment/BiomeParticles.gd") as Script).new()
+	add_child(_biome_particles)
 
 	if _highway and _highway.has_signal("theme_changed"):
 		_highway.theme_changed.connect(_on_theme_changed)
@@ -188,6 +194,9 @@ func _apply_theme(theme: Dictionary, instant: bool) -> void:
 	var fog: Color = theme.get("fog", env.fog_light_color)
 	var amb: Color = theme.get("ambient", env.ambient_light_color)
 	var lit: Color = theme.get("light", _sun.light_color if _sun else Color.WHITE)
+
+	if _biome_particles and _biome_particles.has_method("apply_biome"):
+		_biome_particles.apply_biome(String(theme.get("name", "DOWNTOWN")), instant)
 
 	if instant:
 		env.fog_light_color = fog
