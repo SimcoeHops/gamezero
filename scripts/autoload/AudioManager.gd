@@ -279,8 +279,11 @@ func play_unlock() -> void:
 	_play(_unlock, 0.95, 1.05, 0.0)
 
 
-func play_nearmiss() -> void:
-	_play(_whoosh, 1.1, 1.4, -4.0)
+## Near-miss whoosh. Pitch climbs with the greed combo so threading a hot streak
+## reads as an escalating, rising "tighter and tighter" tension cue (combo 1 = base).
+func play_nearmiss(combo: int = 1) -> void:
+	var bump := 0.085 * float(maxi(combo - 1, 0))
+	_play(_whoosh, 1.1 + bump, 1.4 + bump, -4.0)
 
 
 ## Deep doppler whoosh as the player passes under an overhead gantry — pitched

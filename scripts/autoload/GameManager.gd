@@ -258,6 +258,10 @@ func do_continue() -> void:
 		coins -= continue_cost
 		continue_cost *= 2
 	continues_used += 1
+	# A crash you survived still cools the greed meter — the run resumes at ×1.
+	combo = 1
+	_combo_timer = 0.0
+	combo_changed.emit(combo)
 	coins_changed.emit(coins)
 	_save_progress()
 	Engine.time_scale = 1.0
@@ -326,6 +330,15 @@ func _on_near_miss() -> void:
 	_combo_timer = COMBO_WINDOW
 	combo_changed.emit(combo)
 	add_points(NEAR_MISS_POINTS)
+
+
+## Fraction (0..1) of the combo "heat" remaining before it cools back to ×1 — the
+## near-miss timer normalized over [constant COMBO_WINDOW]. Drives the HUD heat bar.
+## 0 while no combo is active.
+func combo_fraction() -> float:
+	if combo <= 1:
+		return 0.0
+	return clampf(_combo_timer / COMBO_WINDOW, 0.0, 1.0)
 
 
 ## --- Meta-progression shop API ---

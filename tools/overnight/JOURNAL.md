@@ -433,3 +433,53 @@ for"; tune the windows if needed. Lateral easing (`move_speed`/`lateral_accel`) 
 left unchanged this pass (don't alter feel blind) — logged as a follow-up. Coyote is largely
 dormant given the flat collision road (the player only leaves the ground by jumping), so the real
 felt win here is the buffer; coyote is correctness/future-proofing.
+
+---
+
+## 2026-06-19 — Visible greed / risk multiplier (iter 9, Build mode)
+
+**What & why:** Shipped the top NOW item — the #1-priority "Core fun" lever from the iter-8
+audit. The near-miss **combo** (up to ×9) was fully tracked in GameManager but surfaced only as
+a tiny "COMBO x2" label that scrolled by unnoticed. The greed/risk loop (thread traffic tight to
+keep your multiplier hot, or play safe and lose it) is the moment-to-moment thrill engine of a
+runner, and it was invisible. This makes it the loudest thing on screen the instant it's earned.
+
+**How it works:**
+- **HUD GREED meter** (`HUD._build_combo_meter` + `_update_combo_meter` + `_on_combo_changed`,
+  replacing the old `_build_combo_label`): a "GREED" overline, a chunky **outlined ×N** (font 78)
+  and a **draining heat bar**, stacked in a centered VBox at 15.5% screen height (upper third,
+  clear of the road/player). On each near-miss the number snaps to the new combo, **punches**
+  bigger at higher tiers (`1.32 + 0.05·combo`), and the whole meter shifts color **hot-orange →
+  gold → white-hot** (`_combo_color`, lerp over 2→MAX_COMBO). The heat bar width tracks
+  `GameManager.combo_fraction()` each frame; under 34% the meter **pulses with rising urgency**
+  (blink rate + scale scale up as it empties) — a "use it or lose it" cue — then cools to ×1 with
+  a **shrink-fade** (`_hide_combo_meter`).
+- **GameManager**: new `combo_fraction()` (the near-miss timer normalized over `COMBO_WINDOW`,
+  0 when idle) drives the bar. The combo now **also resets to ×1 in `do_continue()`** — a crash
+  you paid to survive still cools the greed — not only on the 3s timeout.
+- **Audio**: `AudioManager.play_nearmiss(combo=1)` now **raises the whoosh pitch +0.085 per tier**,
+  so a hot streak reads as escalating, tightening tension. `Main._on_near_miss` passes the live
+  `GameManager.combo` (GameManager's near-miss handler runs first — autoload connects before the
+  scene — so the combo is already incremented when Main reads it; default arg keeps the
+  jump-ability's `play_nearmiss()` call unchanged).
+
+**Files touched:** `scripts/autoload/GameManager.gd`, `scripts/autoload/AudioManager.gd`,
+`scenes/main/Main.gd`, `scenes/ui/HUD.gd`, `BACKLOG.md`, `tools/overnight/JOURNAL.md`.
+
+**Verified (per CLAUDE.md):** Clean headless boot (no `error|script|parse|invalid|shader`).
+Exercised the full path **windowed** (real renderer for the meter tweens/heat bar) via the
+documented `Main._ready` swap (`_combo_test`): fired 12 near-misses and watched the combo climb
+**×2→×9 and cap** at MAX_COMBO, the heat refill to **1.00** on each, then — feeding stopped — the
+bar **drain linearly** (0.79 → 0.63 → 0.46 → 0.29 → 0.13) and **cool to ×1** at empty with the
+box fading out (`boxvis` true→false), all error-free. Restored `Main.gd` from `/tmp/Main.gd.bak`
+(grep confirms `_combo_test`/`COMBOTEST` gone, `_front_end.begin()` back; the `play_nearmiss(combo)`
+edit is intentionally retained), re-ran a clean headless boot.
+
+**Unverified / risk — human should playtest:** no GPU/visual confirmation of the *look*. Check
+the meter's placement/size at real resolution (centered at 15.5% vertical, font 78 + a 212px bar
+— confirm it never masks the next obstacle/safe gap, the "readable chaos" pillar), the
+tier-color/punch feel, the urgency-pulse intensity at low heat, and whether the rising whoosh
+pitch is exciting vs shrill at ×9 (tune the `+0.085/tier` bump in `AudioManager.play_nearmiss`).
+The combo→×1 reset on a paid continue is new behavior (intended). Logical follow-up, already the
+next NOW item: **flow-state escalation** — tie this hot streak to music/grade/spawn density so a
+hot combo feels hot across the whole world, not just on the HUD.

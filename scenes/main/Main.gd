@@ -144,7 +144,9 @@ func _on_unlock(_ability_name: StringName) -> void:
 
 
 func _on_near_miss() -> void:
-	AudioManager.play_nearmiss()
+	# GameManager's near-miss handler runs first (autoload connects before the scene),
+	# so combo is already incremented — the whoosh pitch rises with the streak.
+	AudioManager.play_nearmiss(GameManager.combo)
 	Juice.add_trauma(0.14)
 	Juice.flash(Color(0.6, 0.95, 1.0), 0.07, 0.18)
 	Juice.haptic(12)

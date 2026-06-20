@@ -15,13 +15,6 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
      lowest cluster is #1 Core fun, #4 Visual polish, #8 Difficulty — all at 3.
      These four items attack those. See the iter-8 JOURNAL scorecard. -->
 
-- [ ] **Visible greed / risk multiplier** (Core fun #1): the near-miss combo (max 9)
-      already exists in GameManager but is nearly invisible — surface it as a BIG escalating
-      on-screen multiplier with a "heat" bar that drains over COMBO_WINDOW and resets to ×1 on
-      any hit. Rising audio pitch per combo tier, color shift hot→white, a chunky "×N" that
-      punches on each near-miss. Reward greedy lane-threading over playing safe. Pure HUD +
-      GameManager wiring, fully verifiable headless.
-
 - [ ] **Flow-state escalation** (Core fun #1): the longer you survive WITHOUT a hit, the
       hotter the world gets — tie a clean-streak timer to (a) music intensity / engine drone,
       (b) a creeping color-grade warmth or vignette, (c) gantry/coin density. Make a hot streak
@@ -49,8 +42,8 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       animated arrow board); tie spawn density to flow-state/combo so hot streaks feel busier.
 
 ## FUN & GAME LOOP
-- [ ] Risk/reward "greed" mechanic: a rising near-miss/combo multiplier that resets on hit —
-      reward threading traffic instead of playing safe. Big, readable on-screen feedback.
+- [x] Risk/reward "greed" mechanic — DONE iter 9 (see Done): visible GREED meter (chunky ×N +
+      draining heat bar, hot→white tiers, rising whoosh pitch).
 - [ ] A pursuer/boss beat: an occasional chasing hazard (cop, wrecking truck) that forces
       forward pressure and creates memorable run peaks.
 - [ ] Flow-state escalation: the longer you survive cleanly, the more the world reacts
@@ -130,6 +123,31 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Visible greed / risk multiplier** (2026-06-19, iter 9) — attacks #1 Core fun (the
+      top NOW item). The near-miss combo (max ×9) was tracked in GameManager but shown only as a
+      tiny "COMBO x2" label — the central greed/risk hook was nearly invisible. Built a proper
+      **GREED meter** in the HUD: a chunky outlined **×N** (font 78) over a draining **heat bar**,
+      centered in the upper third clear of the road. The number punches bigger each tier and
+      shifts color **hot-orange → gold → white-hot** as the combo climbs (`_combo_color`); the
+      heat bar drains over `COMBO_WINDOW` (3s) and, as it runs low (<34%), the whole meter
+      **pulses with rising urgency** (a "use it or lose it" cue) before cooling back to ×1 with a
+      shrink-fade. Wiring: `GameManager.combo_fraction()` exposes the normalized timer for the
+      bar; the combo now also **resets to ×1 on a survived hit** (`do_continue`), not just on
+      timeout. Audio: `AudioManager.play_nearmiss(combo)` now **pitches the whoosh up per tier**
+      (+0.085/tier) so a hot streak reads as escalating tension; `Main._on_near_miss` passes the
+      live combo. Rewards greedy lane-threading over playing safe. Files:
+      `scripts/autoload/GameManager.gd`, `scripts/autoload/AudioManager.gd`,
+      `scenes/main/Main.gd`, `scenes/ui/HUD.gd`. Verified: clean headless boot; exercised the
+      full path windowed via the `Main._ready` swap (`_combo_test`) — combo climbed ×2→×9 and
+      capped, heat refilled to 1.00 on each near-miss, drained linearly (0.79→0.63→…→0.13) then
+      cooled to ×1 at empty with the box fading out, all error-free; swap restored + re-verified
+      clean.
+      - [ ] Human playtest: the meter *placement/size* at real resolution (centered at 15.5%
+            vertical — confirm it never blocks the next obstacle, the readability pillar), the
+            tier colors/punch feel, the urgency-pulse intensity, and whether the rising whoosh
+            pitch reads as exciting vs shrill at ×9 (tune the +0.085/tier bump in `play_nearmiss`).
+      - [ ] Follow-up (next NOW item): **flow-state escalation** — tie this hot streak to music
+            intensity / color-grade warmth / spawn density so a hot combo *feels* hot worldwide.
 - [x] **Control crispness pass: jump input buffering + coyote time** (2026-06-19, iter 8 deep
       audit ship) — attacks #2 Game feel, the longest-standing flagged gap (called out in the
       iter-4 audit, never fixed). A jump pressed a few frames BEFORE landing (e.g. out of

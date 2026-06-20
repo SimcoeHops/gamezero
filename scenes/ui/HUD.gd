@@ -23,7 +23,17 @@ var _ability_icons: Dictionary = {}
 # Runtime-created elements.
 var _powerup_rt: RichTextLabel = null
 var _last_powerup_count: int = 0
-var _combo_label: Label = null
+
+# Greed / near-miss combo meter (chunky ×N + draining "heat" bar).
+var _combo_box: VBoxContainer = null
+var _combo_over: Label = null
+var _combo_num: Label = null
+var _combo_heat_bg: Panel = null
+var _combo_heat_fill: Panel = null
+var _combo_heat_fill_sb: StyleBoxFlat = null
+var _combo_hide_tw: Tween = null
+const COMBO_BAR_SIZE := Vector2(212.0, 12.0)
+
 var _coin_label: Label = null
 var _fx_rect: ColorRect = null
 var _fx_mat: ShaderMaterial = null
@@ -76,7 +86,7 @@ func _ready() -> void:
 	_build_screen_fx()
 	_build_star_banner()
 	_build_powerup_label()
-	_build_combo_label()
+	_build_combo_meter()
 	_build_coin_label()
 	_build_xp_bar()
 	_update_powerups()
@@ -139,6 +149,7 @@ func _process(delta: float) -> void:
 		_refresh_powerups()
 		_update_star_banner()
 		_update_xp_bar(delta)
+		_update_combo_meter(delta)
 
 
 # --------------------------------------------------------------- score / speed
@@ -158,33 +169,134 @@ func _update_speed_display() -> void:
 
 # --------------------------------------------------------------- combo
 
-func _build_combo_label() -> void:
-	_combo_label = Label.new()
-	_combo_label.add_theme_font_size_override("font_size", 40)
-	_combo_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.15))
-	_combo_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
-	_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_combo_label.anchor_left = 0.0
-	_combo_label.anchor_right = 1.0
-	_combo_label.anchor_top = 0.13
-	_combo_label.anchor_bottom = 0.13
-	_combo_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_combo_label.visible = false
-	add_child(_combo_label)
+## The GREED meter — a chunky escalating "×N" with a draining "heat" bar, the
+## reward for greedily threading traffic instead of playing safe. The number grows
+## and shifts hot-orange → gold → white-hot as the near-miss combo climbs; the bar
+## drains over COMBO_WINDOW and the whole thing cools back to ×1 the instant it
+## empties (or on a hit). Centered in the upper third, clear of the road action.
+func _build_combo_meter() -> void:
+	_combo_box = VBoxContainer.new()
+	_combo_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	_combo_box.add_theme_constant_override("separation", 2)
+	_combo_box.anchor_left = 0.0
+	_combo_box.anchor_right = 1.0
+	_combo_box.anchor_top = 0.155
+	_combo_box.anchor_bottom = 0.155
+	_combo_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_combo_box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_combo_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_combo_box.visible = false
+	add_child(_combo_box)
+
+	_combo_over = Label.new()
+	_combo_over.text = "GREED"
+	_combo_over.add_theme_font_size_override("font_size", 19)
+	_combo_over.add_theme_color_override("font_color", Color(1.0, 0.7, 0.4))
+	_combo_over.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_combo_over.add_theme_constant_override("shadow_offset_x", 1)
+	_combo_over.add_theme_constant_override("shadow_offset_y", 1)
+	_combo_over.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_combo_over.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_combo_box.add_child(_combo_over)
+
+	_combo_num = Label.new()
+	_combo_num.text = "×2"
+	_combo_num.add_theme_font_size_override("font_size", 78)
+	_combo_num.add_theme_color_override("font_color", Color(1.0, 0.5, 0.15))
+	_combo_num.add_theme_color_override("font_outline_color", Color(0.15, 0.03, 0.0, 0.9))
+	_combo_num.add_theme_constant_override("outline_size", 8)
+	_combo_num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_combo_num.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_combo_box.add_child(_combo_num)
+
+	# Heat bar: a fixed-width rounded track, centered, with a draining fill.
+	_combo_heat_bg = Panel.new()
+	_combo_heat_bg.custom_minimum_size = COMBO_BAR_SIZE
+	_combo_heat_bg.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_combo_heat_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg_sb := StyleBoxFlat.new()
+	bg_sb.bg_color = Color(0.05, 0.03, 0.02, 0.7)
+	bg_sb.set_corner_radius_all(6)
+	bg_sb.set_border_width_all(1)
+	bg_sb.border_color = Color(1.0, 0.6, 0.3, 0.45)
+	_combo_heat_bg.add_theme_stylebox_override("panel", bg_sb)
+	_combo_box.add_child(_combo_heat_bg)
+
+	_combo_heat_fill = Panel.new()
+	_combo_heat_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_combo_heat_fill.position = Vector2(2, 2)
+	_combo_heat_fill.size = Vector2(COMBO_BAR_SIZE.x - 4.0, COMBO_BAR_SIZE.y - 4.0)
+	_combo_heat_fill_sb = StyleBoxFlat.new()
+	_combo_heat_fill_sb.bg_color = Color(1.0, 0.55, 0.15, 0.95)
+	_combo_heat_fill_sb.set_corner_radius_all(5)
+	_combo_heat_fill.add_theme_stylebox_override("panel", _combo_heat_fill_sb)
+	_combo_heat_bg.add_child(_combo_heat_fill)
+
+
+## Tier color for a combo value: hot orange at ×2 → gold mid → white-hot at MAX.
+func _combo_color(c: int) -> Color:
+	var span := maxi(GameManager.MAX_COMBO - 2, 1)
+	var t := clampf(float(c - 2) / float(span), 0.0, 1.0)
+	if t < 0.5:
+		return Color(1.0, 0.42, 0.12).lerp(Color(1.0, 0.82, 0.2), t / 0.5)
+	return Color(1.0, 0.82, 0.2).lerp(Color(1.0, 1.0, 1.0), (t - 0.5) / 0.5)
 
 
 func _on_combo_changed(combo: int) -> void:
-	if _combo_label == null:
+	if _combo_box == null:
 		return
 	if combo > 1:
-		_combo_label.text = "COMBO x%d" % combo
-		_combo_label.visible = true
-		_combo_label.pivot_offset = _combo_label.size * 0.5
+		if _combo_hide_tw and _combo_hide_tw.is_valid():
+			_combo_hide_tw.kill()
+		_combo_box.visible = true
+		_combo_box.modulate.a = 1.0
+		_combo_num.text = "×%d" % combo
+		var col := _combo_color(combo)
+		_combo_num.add_theme_color_override("font_color", col)
+		_combo_over.add_theme_color_override("font_color", col.lerp(Color(1, 0.7, 0.4), 0.4))
+		_combo_heat_fill_sb.bg_color = Color(col.r, col.g, col.b, 0.95)
+		# Punch the number bigger at higher tiers so escalation reads physically.
+		_combo_num.pivot_offset = _combo_num.size * 0.5
+		var punch := 1.32 + 0.05 * float(combo)
 		var tw := create_tween()
-		_combo_label.scale = Vector2(1.4, 1.4)
-		tw.tween_property(_combo_label, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_combo_num.scale = Vector2(punch, punch)
+		tw.tween_property(_combo_num, "scale", Vector2.ONE, 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	else:
-		_combo_label.visible = false
+		_hide_combo_meter()
+
+
+## Cool-down animation when the combo breaks (timer drained or hit) — shrink + fade.
+func _hide_combo_meter() -> void:
+	if _combo_box == null or not _combo_box.visible:
+		return
+	if _combo_hide_tw and _combo_hide_tw.is_valid():
+		_combo_hide_tw.kill()
+	_combo_box.pivot_offset = _combo_box.size * 0.5
+	_combo_hide_tw = create_tween()
+	_combo_hide_tw.tween_property(_combo_box, "modulate:a", 0.0, 0.22)
+	_combo_hide_tw.parallel().tween_property(_combo_num, "scale", Vector2(0.7, 0.7), 0.22).set_ease(Tween.EASE_IN)
+	_combo_hide_tw.tween_callback(func(): _combo_box.visible = false)
+
+
+## Drains the heat bar and breathes the number each frame while a combo is live.
+func _update_combo_meter(_delta: float) -> void:
+	if _combo_box == null or not _combo_box.visible:
+		return
+	var frac := GameManager.combo_fraction()
+	_combo_heat_fill.size.x = (COMBO_BAR_SIZE.x - 4.0) * frac
+	# As the heat runs out, pulse the whole meter with rising urgency so the
+	# player feels the window closing — a "use it or lose it" cue.
+	if frac <= 0.34:
+		var urgency := 1.0 - frac / 0.34
+		var blink := 0.5 + 0.5 * sin(Time.get_ticks_msec() * (0.012 + 0.02 * urgency))
+		_combo_box.modulate.a = 0.55 + 0.45 * blink
+		var s := 1.0 + 0.06 * urgency * blink
+		_combo_num.pivot_offset = _combo_num.size * 0.5
+		# Don't fight an active punch tween (scale > 1.05).
+		if _combo_num.scale.x <= 1.06:
+			_combo_num.scale = Vector2(s, s)
+	else:
+		_combo_box.modulate.a = 1.0
 
 
 # --------------------------------------------------------------- popups
@@ -593,8 +705,11 @@ func reset() -> void:
 			icon.modulate = Color(0.3, 0.3, 0.3, 0.6)
 	if _milestone_banner:
 		_milestone_banner.visible = false
-	if _combo_label:
-		_combo_label.visible = false
+	if _combo_hide_tw and _combo_hide_tw.is_valid():
+		_combo_hide_tw.kill()
+	if _combo_box:
+		_combo_box.visible = false
+		_combo_box.modulate.a = 1.0
 	_xp_display = 0.0
 	if _xp_fill:
 		_xp_fill.size.x = 0.0
