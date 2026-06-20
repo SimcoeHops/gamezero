@@ -108,9 +108,15 @@ Cars are **frozen `RigidBody3D` moved by position**, which bypasses normal
   worse than the asphalt in a 3D perspective road, so they're earmarked for the top-down
   JourneyMap, not the road surface. The 3D road keeps `retro-urban-kit/.../asphalt.png`.
 - **kenney_city-kit-roads** — 3D road pieces (small 1-unit top-down tiles; don't span the
-  14 m highway cleanly). NOTE: the prompt referenced `kenney_3d-road-tiles` (tunnels etc.)
-  but **that folder is NOT present**. Overhead tunnels/gantries were therefore skipped —
-  flag/revisit if that pack gets added.
+  14 m highway cleanly).
+- **kenney_3d-road-tiles** — present, but it's a low-poly *terrain* road-planning kit
+  (sunken roads, grass, water; `Models/gLTF/roadTile_001..N.gltf`), NOT the overhead
+  tunnels/gantries the old note imagined — these don't span the 14 m highway cleanly either.
+  Overhead **gantries** were therefore built **procedurally** instead (`scenes/highway/
+  Gantry.gd` + `GantrySpawner.gd`): code-built pillars/beam/sign + an under-light, tinted
+  per biome (`ACCENTS`), riding the curve/hills like cars, with a doppler whoosh
+  (`AudioManager.play_gantry_whoosh`) + dark "shadow sweep" flash + FOV/light kick on
+  pass-under. The terrain tiles remain earmarked for a future top-down map use, not the road.
 - **kenney_animated-characters-protagonists** — player + `Animations/run.fbx` (run anim
   loaded dynamically in `PlayerController._ready`). Also retro/blocky character kits,
   city-kit-commercial/industrial, retro-urban-kit, digital-audio + impact-sounds (SFX).

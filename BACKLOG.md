@@ -10,10 +10,12 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## NOW — highest leverage (do these first)
 
-- [ ] **Overhead tunnels / gantries** using `assets/kenney_3d-road-tiles/` (now present;
-      CLAUDE.md wrongly says it's missing). Cosmetic first, ride the hills/curve like cars.
-      Use them to punctuate biomes and sell speed (whoosh + shadow sweep as you pass under).
-      Update the CLAUDE.md note when done.
+<!-- (empty — next build iteration: pull from the sections below, or run a deep audit) -->
+
+- [ ] **Gantry polish v2** (follow-up to the shipped gantries): per-biome sign *text/icons*
+      (e.g. a billboarded WORD like the powerup gates) instead of a blank lit panel; rarer
+      special variants (a full overhead tunnel ring you pass *through* in Industrial/Neon, an
+      animated arrow board); tie spawn density to flow-state/combo so hot streaks feel busier.
 
 ## FUN & GAME LOOP
 - [ ] Risk/reward "greed" mechanic: a rising near-miss/combo multiplier that resets on hit —
@@ -96,6 +98,17 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Overhead gantries** (2026-06-19) — punctuate biomes & sell speed. The named asset
+      (`kenney_3d-road-tiles`) turned out to be a top-down *terrain* kit, not tunnels, so
+      gantries were built **procedurally**: `scenes/highway/Gantry.gd` (pillars + cross-beam +
+      truss rail + lit hanging sign + under-light, all code-built BoxMeshes) and
+      `GantrySpawner.gd` (distance-based spacing, per-biome `ACCENTS` tint, sign/bare-truss
+      variety, speed-synced). They ride the curve/hills via the same lens functions as cars.
+      Pass-under "whoosh" beat: `AudioManager.play_gantry_whoosh` (deep doppler + low impact),
+      a near-black `Juice.flash` shadow sweep, FOV kick + trauma + haptic, and the under-light
+      punches bright as it crosses overhead. Wired into `Main.tscn`/`Main.gd`; CLAUDE.md note
+      corrected. Verified headless (spawn→ride→sweep@z≈9→despawn, biome accent amber→green,
+      zero errors) + a windowed renderer pass. Follow-up "Gantry polish v2" added to NOW.
 - [x] **Crash sequence, taken to "wow"** (2026-06-19) — layered the signature crash: hard
       hit-stop (time_scale 0.001) → held slow-mo (0.12) → cubic "whip" back to speed, all on a
       real-time timeline (`PlayerController._run_crash_time_sequence`). Added a glass/metal shard

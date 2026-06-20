@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scenes/main/Main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/highway/Highway.tscn" id="2"]
@@ -12,6 +12,7 @@
 [ext_resource type="Script" path="res://scenes/ui/FrontEnd.gd" id="10"]
 [ext_resource type="Script" path="res://scenes/ui/PauseMenu.gd" id="11"]
 [ext_resource type="Script" path="res://scenes/ui/LevelUpScreen.gd" id="12"]
+[ext_resource type="Script" path="res://scenes/highway/GantrySpawner.gd" id="13"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_top_color = Color(0.02, 0.05, 0.15, 1.0)
@@ -79,6 +80,9 @@ script = ExtResource("7")
 
 [node name="CoinSpawner" type="Node3D" parent="."]
 script = ExtResource("8")
+
+[node name="GantrySpawner" type="Node3D" parent="."]
+script = ExtResource("13")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 

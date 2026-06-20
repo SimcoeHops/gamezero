@@ -5,6 +5,63 @@ and anything the human should review or decide. Newest at the bottom.
 
 ---
 
+## 2026-06-19 — Overhead gantries (Build mode)
+
+**What & why:** Shipped the top NOW item — overhead structures that punctuate the biomes and
+sell speed (VISION pillar #1 "Speed you can feel", rubric #4 art direction). The road is long,
+flat-overhead and a bit empty up top; rushing *under* a lit structure is one of the cheapest,
+strongest speed cues in any runner.
+
+**Asset reality check:** The backlog said to use `kenney_3d-road-tiles` and that CLAUDE.md
+"wrongly" called it missing. The folder IS present now — but it's a low-poly **terrain**
+road-planning kit (sunken roads/grass/water, `roadTile_001..N.gltf`), NOT tunnels or gantries,
+and (like `city-kit-roads`) its tiles don't span the 14 m highway. Rather than force a
+top-down terrain asset into an unverifiable visual feature, I built the *design intent*
+**procedurally** so it's fully controllable and headless-verifiable. Corrected the CLAUDE.md
+asset note to say exactly this.
+
+**How it works:**
+- `scenes/highway/Gantry.gd` (new, no .tscn — built in code so the spawner can style it):
+  two edge pillars + a top cross-beam + a thinner truss rail + an optional lit hanging sign +
+  a dark frame, plus an `OmniLight3D` slung under the beam. Structure is dark metal; sign/
+  strips/rail are emissive in the biome accent. `_process` moves it +Z at the highway speed and
+  rides the road's cosmetic curve/hills via the **same** `get_curve_offset/get_curve_yaw/
+  get_height_offset` lenses cars use, so it sits on the bending/rolling road. Despawns past z>22.
+- Pass-under beat (`_do_sweep`, fired once as it crosses the overhead plane z≈9, between the
+  player at z=6.5 and camera at z=12): `AudioManager.play_gantry_whoosh()` (new — deep doppler
+  whoosh from the `_whoosh` bank pitched to 0.5–0.68 + a soft low `_crash` thud), a near-black
+  `Juice.flash` as a momentary "shadow sweep" dim, `kick_fov(5)` + `add_trauma(0.16)` + haptic,
+  and the under-light punches to 6.0 then tweens back — the "drove under a lit structure" feel.
+- `scenes/highway/GantrySpawner.gd` (new, registered in `Main.tscn`, wired in `Main.gd` like the
+  other spawners): **distance-based** spacing (~105 m ± jitter) so cadence is consistent at any
+  speed; reads the biome from the highway each spawn for the accent (`ACCENTS` dict — amber
+  Downtown / green Countryside / orange Industrial / hot-magenta Neon); ~72% carry a sign, the
+  rest are bare trusses for variety; keeps live gantries speed-synced and clears them on a fresh
+  run (`state_changed → PLAYING`).
+- `AudioManager.play_gantry_whoosh()` added.
+
+**Files touched:** `scenes/highway/Gantry.gd` (new), `scenes/highway/GantrySpawner.gd` (new),
+`scenes/main/Main.tscn`, `scenes/main/Main.gd`, `scripts/autoload/AudioManager.gd`, `CLAUDE.md`,
+`BACKLOG.md`.
+
+**Verified (per CLAUDE.md):** Clean headless boot (no `error|script|parse|invalid|shader`).
+Exercised gameplay via the documented `Main._ready` swap (forced `start_game`, temporarily bumped
+`base_speed`/lowered gantry spacing + debug prints): logs showed gantries spawn, ride the road,
+**SWEEP at z≈9** firing the whoosh/flash/light, the biome accent flip on a theme change
+(DOWNTOWN amber → COUNTRYSIDE green), sign/bare-truss variety, and clean despawn with no errors
+or buildup. Ran **windowed** too (real renderer for the meshes/OmniLight/materials) — clean.
+Restored `Main.gd` from `/tmp/Main.gd.bak`, removed both debug prints, re-ran a clean boot.
+
+**Unverified / risk:** No GPU/visual confirmation of the actual look — **human should playtest**:
+the beam height/clearance (BEAM_H 6.6; camera y 6.6 — should pass cleanly *over* the view but
+confirm it doesn't clip the camera near plane), the shadow-sweep dim intensity (0.34 — could be
+too dark or too subtle), whoosh timing/loudness vs the engine drone, and spacing/density feel
+(105 m may be too frequent or too sparse). The under-light adds one OmniLight per live gantry
+(usually 1–2 on screen) — negligible, but noted for the perf pillar. Sign panels are currently
+blank lit slabs (no text/icon) — follow-up "Gantry polish v2" added to BACKLOG NOW.
+
+---
+
 ## 2026-06-19 — Level-up "choose your weapon" moment (Build mode)
 
 **What & why:** Shipped the top NOW item — the Vampire-Survivors pick-1-of-3 upgrade screen,

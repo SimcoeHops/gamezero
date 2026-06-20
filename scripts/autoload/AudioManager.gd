@@ -227,6 +227,14 @@ func play_nearmiss() -> void:
 	_play(_whoosh, 1.1, 1.4, -4.0)
 
 
+## Deep doppler whoosh as the player passes under an overhead gantry — pitched
+## well below the near-miss whoosh and layered with a soft low impact for body.
+func play_gantry_whoosh() -> void:
+	_play(_whoosh, 0.5, 0.68, -2.0)
+	if not _crash.is_empty():
+		_play(_crash, 0.4, 0.5, -16.0)
+
+
 func play_drain() -> void:
 	_play(_drain, 0.9, 1.1, -1.0)
 

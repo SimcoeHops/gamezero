@@ -17,6 +17,7 @@ extends Node3D
 @onready var _car_spawner: Node3D = $CarSpawner
 @onready var _powerup_spawner: Node3D = $PowerUpSpawner
 @onready var _coin_spawner: Node3D = $CoinSpawner
+@onready var _gantry_spawner: Node3D = $GantrySpawner
 @onready var _world_env: WorldEnvironment = $WorldEnvironment
 @onready var _sun: DirectionalLight3D = $DirectionalLight3D
 @onready var _front_end: Control = $CanvasLayer/FrontEnd
@@ -43,6 +44,10 @@ func _ready() -> void:
 	if _coin_spawner:
 		_coin_spawner.player_ref = _player
 		_coin_spawner.highway_ref = _highway
+
+	if _gantry_spawner:
+		_gantry_spawner.player_ref = _player
+		_gantry_spawner.highway_ref = _highway
 
 	GameManager.continued.connect(_on_continued)
 
