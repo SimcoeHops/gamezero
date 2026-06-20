@@ -255,3 +255,59 @@ density, the shockwave-ring + chroma-fringe intensity (could be too strong), and
 double flash reads as one pop or two. Debris is 40+28 particles/crash, unverified on mobile GPU
 (follow-up noted). The chromatic effect is a *faux* edge-fringe (no screen read) for perf, not
 true post-process CA — flag if the human wants the real thing (costs a back-buffer copy/frame).
+
+## 2026-06-19 — Meta-progression coin shop (iter 6, Build mode)
+
+**What & why:** Shipped the top NOW item and the single biggest retention lever (VISION
+rubric #6 Progression, the joint-lowest audit score of 2). Persistent `coins` previously had
+ONE use — paying for a mid-run continue — so there was almost no reason to grind them. Now
+there's a permanent-upgrade shop: coins buy power that persists between runs and visibly
+escalates how each run starts.
+
+**How it works:**
+- **Shop UI** (`FrontEnd._show_shop` + `_make_upgrade_row` + `_buy_upgrade`): a title-screen
+  `UPGRADES ◎n` button opens a list of upgrade rows (PanelContainer + Labels + a BUY button —
+  deliberately plain controls, NO custom `_draw`, so it's headless-verifiable). Each row shows
+  name, description, ●/○ level pips + `LV n/max`, and a `◎cost` / `MAX` button. The whole shop
+  is rebuilt on each purchase so level, next cost and the coin balance always reflect state.
+  BUY plays `play_unlock` on success / `play_ui` when unaffordable.
+- **5 tiered upgrades** (`GameManager.UPGRADES`, next-cost = base + step·level):
+  SIDEARM (max 3 — start each run with a Pistol, +1 gun level per tier), AIR DASH (max 1 —
+  start with a mid-air double jump), COIN MAGNET (max 1 — always-on magnet), GUARDIAN (max 2 —
+  start with N free no-coin revives), LUCKY CHARM (max 4 — +25% coins/run per level).
+- **Persistence + API** (`GameManager`): owned levels live in `_upgrades`, saved to the existing
+  `user://highscore.cfg` under a new `[upgrades]` section (back-compatible — missing keys → 0).
+  Added `upgrade_level/max/is_maxed/cost`, `can_buy_upgrade`, `buy_upgrade` (deduct→bump→emit
+  `upgrade_purchased`→save), `coin_multiplier`, and `_apply_meta_upgrades()` called at the end of
+  `start_game` (AFTER the per-run manager resets so it layers on a clean slate): sets
+  `PowerUpManager.air_jumps`, `PowerUpManager.permanent_magnet`, `free_continues`, and grants
+  N starting PISTOLs. `end_game` now scales the coin payout by `coin_multiplier()`.
+- **Free revives**: new `GameManager.free_continues` is spent before coins in `do_continue`, and
+  `can_continue` returns true on a free revive even when coins are short. `ContinueScreen` shows
+  "★ FREE REVIVE ★ (n left)" instead of a coin cost when one is available.
+- **PowerUpManager**: new `permanent_magnet` bool (cleared in `reset`, set by `_apply_meta_upgrades`);
+  `is_magnet_active()` now returns true while it's set, so the Coin magnet + HUD indicator light up
+  for the whole run with no orb needed.
+
+**Files touched:** `scripts/autoload/GameManager.gd`, `scripts/autoload/PowerUpManager.gd`,
+`scenes/ui/FrontEnd.gd`, `scenes/ui/ContinueScreen.gd`, `BACKLOG.md`, `tools/overnight/JOURNAL.md`.
+
+**Verified (per CLAUDE.md):** Clean headless boot (no `error|script|parse|invalid|shader`).
+Exercised the **apply logic** via the documented `Main._ready` swap (`_shop_test`): bought all 5
+upgrades, confirmed cost tiering (e.g. STARTGUN 120→260), maxed STARTGUN→3 (`maxed=true`) and
+COINMULT→4 (`coin_multiplier()=2.0`), then `start_game` reported `air_jumps=1 perm_magnet=true
+free_revives=1 guns={PISTOL:3}`. Exercised the **shop UI** windowed (temp `begin()→_show_shop` +
+a real `_buy_upgrade` → rebuild): built + purchased + rebuilt with zero errors (`[SHOPUI]... lvl=1`).
+Restored `Main.gd` from `/tmp/Main.gd.bak` and `FrontEnd.begin()`, removed all test code (grep
+confirms none remains), reset the dev save's `[upgrades]` to 0 (the test had bought them), re-ran a
+clean headless boot.
+
+**Unverified / risk — human should decide/playtest:**
+- **Economy balance** is a first guess: costs 120–580 vs ~`score/10·charm` coins/run. Tune so the
+  first upgrade lands in a few runs but a full board is a real grind. (`GameManager.UPGRADES` costs.)
+- **Shop layout at real resolution**: 5 rows + heading + balance + BACK via `_new_root`'s
+  CenterContainer; should fit 720p+, but if more upgrades are added it'll want a ScrollContainer.
+- The dev save (`user://highscore.cfg`) is currently `high=99999`, `coins=2200`, all upgrades 0 —
+  left generous so the shop can be playtested immediately. New `[upgrades]` keys are additive.
+- Buy SFX reuse `play_unlock`/`play_ui`; a dedicated "ka-ching" + a row punch/particle would make
+  spending feel better (follow-up logged). Skins remain free (gating them is a logged follow-up).

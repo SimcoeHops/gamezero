@@ -100,6 +100,124 @@ func _show_title() -> void:
 	play.pressed.connect(_show_character_select)
 	vbox.add_child(play)
 
+	var shop := Button.new()
+	shop.text = "UPGRADES  ◎ %d" % GameManager.coins
+	shop.custom_minimum_size = Vector2(320, 60)
+	shop.add_theme_font_size_override("font_size", 30)
+	shop.add_theme_color_override("font_color", Color(1.0, 0.88, 0.4))
+	shop.pressed.connect(_show_shop)
+	vbox.add_child(shop)
+
+
+## The meta-progression shop: spend persisted coins on permanent upgrades that
+## apply at the start of every run. Rebuilt wholesale on each purchase so levels,
+## costs and the coin balance always reflect the latest state.
+func _show_shop() -> void:
+	AudioManager.play_ui()
+	var vbox := _new_root()
+
+	var heading := Label.new()
+	heading.text = "UPGRADE SHOP"
+	heading.add_theme_font_size_override("font_size", 56)
+	heading.add_theme_color_override("font_color", Color(1, 0.96, 0.86))
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(heading)
+
+	var coin_lbl := Label.new()
+	coin_lbl.text = "◎ %d  COINS" % GameManager.coins
+	coin_lbl.add_theme_font_size_override("font_size", 34)
+	coin_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.4))
+	coin_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(coin_lbl)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 12)
+	vbox.add_child(list)
+	for id in GameManager.UPGRADES.keys():
+		list.add_child(_make_upgrade_row(id))
+
+	var back := Button.new()
+	back.text = "BACK"
+	back.custom_minimum_size = Vector2(220, 56)
+	back.add_theme_font_size_override("font_size", 30)
+	back.pressed.connect(_show_title)
+	vbox.add_child(back)
+
+
+## One upgrade row: name + description + level pips on the left, a BUY (cost) /
+## MAX button on the right, framed in the upgrade's accent colour.
+func _make_upgrade_row(id: String) -> Control:
+	var u: Dictionary = GameManager.UPGRADES[id]
+	var lvl := GameManager.upgrade_level(id)
+	var maxl := GameManager.upgrade_max(id)
+	var color: Color = u["color"]
+
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.08, 0.09, 0.14, 0.92)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(color.r, color.g, color.b, 0.55)
+	sb.set_corner_radius_all(10)
+	sb.content_margin_left = 18
+	sb.content_margin_right = 18
+	sb.content_margin_top = 12
+	sb.content_margin_bottom = 12
+	panel.add_theme_stylebox_override("panel", sb)
+
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 18)
+	hbox.custom_minimum_size = Vector2(660, 0)
+	panel.add_child(hbox)
+
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_theme_constant_override("separation", 2)
+	hbox.add_child(info)
+
+	var name_lbl := Label.new()
+	name_lbl.text = u["name"]
+	name_lbl.add_theme_font_size_override("font_size", 28)
+	name_lbl.add_theme_color_override("font_color", color)
+	info.add_child(name_lbl)
+
+	var desc_lbl := Label.new()
+	desc_lbl.text = u["desc"]
+	desc_lbl.add_theme_font_size_override("font_size", 18)
+	desc_lbl.add_theme_color_override("font_color", Color(0.78, 0.82, 0.9))
+	info.add_child(desc_lbl)
+
+	var pips := ""
+	for i in maxl:
+		pips += "●" if i < lvl else "○"
+	var pip_lbl := Label.new()
+	pip_lbl.text = "%s   LV %d/%d" % [pips, lvl, maxl]
+	pip_lbl.add_theme_font_size_override("font_size", 18)
+	pip_lbl.add_theme_color_override("font_color", Color(color.r, color.g, color.b, 0.9))
+	info.add_child(pip_lbl)
+
+	var buy := Button.new()
+	buy.custom_minimum_size = Vector2(160, 66)
+	buy.add_theme_font_size_override("font_size", 26)
+	buy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	if GameManager.upgrade_is_maxed(id):
+		buy.text = "MAX"
+		buy.disabled = true
+	else:
+		buy.text = "◎ %d" % GameManager.upgrade_cost(id)
+		buy.disabled = not GameManager.can_buy_upgrade(id)
+		buy.pressed.connect(_buy_upgrade.bind(id))
+	hbox.add_child(buy)
+
+	return panel
+
+
+func _buy_upgrade(id: String) -> void:
+	if GameManager.buy_upgrade(id):
+		AudioManager.play_unlock()
+	else:
+		AudioManager.play_ui()
+	_show_shop()  # rebuild to reflect the new level, cost and balance
+
 
 func _show_character_select() -> void:
 	AudioManager.play_ui()

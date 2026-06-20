@@ -38,6 +38,39 @@ enum GameState { MENU, PLAYING, GAME_OVER, REVIVE_OFFER }
 const BASE_CONTINUE_COST := 50
 const MAX_CONTINUES := 3
 
+## Emitted when a meta upgrade is purchased (so the shop UI can refresh).
+signal upgrade_purchased(id: String, level: int)
+
+## Permanent, coin-bought upgrades that apply at [method start_game]. Each is a
+## tiered unlock persisted in the save file. Next-level cost = base + step·level.
+##   STARTGUN — begin armed with a Pistol (one extra level per tier).
+##   AIRJUMP  — start with a mid-air double jump.
+##   MAGNET   — always-on coin magnet for the whole run.
+##   REVIVE   — start each run with N free (no-coin) revives.
+##   COINMULT — +25% coins earned per run, per level.
+const UPGRADES := {
+	"STARTGUN": {
+		"name": "SIDEARM", "desc": "Start each run armed with a Pistol (+1 level/tier)",
+		"max": 3, "cost": 120, "step": 140, "color": Color(1.0, 0.85, 0.25),
+	},
+	"AIRJUMP": {
+		"name": "AIR DASH", "desc": "Begin every run with a mid-air double jump",
+		"max": 1, "cost": 200, "step": 0, "color": Color(0.4, 0.85, 1.0),
+	},
+	"MAGNET": {
+		"name": "COIN MAGNET", "desc": "Always pull in nearby coins — no orb needed",
+		"max": 1, "cost": 180, "step": 0, "color": Color(1.0, 0.78, 0.2),
+	},
+	"REVIVE": {
+		"name": "GUARDIAN", "desc": "Start with a free revive (no coin cost)",
+		"max": 2, "cost": 260, "step": 320, "color": Color(0.5, 1.0, 0.6),
+	},
+	"COINMULT": {
+		"name": "LUCKY CHARM", "desc": "+25% coins earned per run, per level",
+		"max": 4, "cost": 150, "step": 130, "color": Color(1.0, 0.5, 0.85),
+	},
+}
+
 ## Points awarded per dodge and per close-call near-miss.
 const DODGE_POINTS := 10
 const NEAR_MISS_POINTS := 25
@@ -106,6 +139,11 @@ var level_xp_needed: int = LEVEL_XP_BASE
 ## Continue economy for the current run.
 var continue_cost: int = BASE_CONTINUE_COST
 var continues_used: int = 0
+## Free revives remaining this run (from the GUARDIAN upgrade) — spent before coins.
+var free_continues: int = 0
+
+## Owned meta-upgrade levels: id -> level (0 = not bought). Persisted.
+var _upgrades: Dictionary = {}
 
 const SAVE_PATH := "user://highscore.cfg"
 
@@ -146,6 +184,7 @@ func start_game() -> void:
 	ProgressionManager.reset()
 	PowerUpManager.reset()
 	GunManager.reset()
+	_apply_meta_upgrades()
 	run_distance = 0.0
 	top_speed = 0.0
 	# Seed with the opening biome (Highway starts on THEMES[0] = DOWNTOWN).
@@ -163,7 +202,7 @@ func end_game() -> void:
 	current_state = GameState.GAME_OVER
 	state_changed.emit(current_state)
 
-	last_coins_earned = maxi(int(score / 10.0), 0)
+	last_coins_earned = maxi(int(score / 10.0 * coin_multiplier()), 0)
 	coins += last_coins_earned
 
 	# Capture the bests as they stood BEFORE this run so the recap can celebrate
@@ -191,9 +230,12 @@ func collect_coin() -> void:
 	add_points(2)
 
 
-## Whether the player can afford another continue this run.
+## Whether the player can revive again this run — a free GUARDIAN revive counts even
+## if coins are short.
 func can_continue() -> bool:
-	return coins >= continue_cost and continues_used < MAX_CONTINUES
+	if continues_used >= MAX_CONTINUES:
+		return false
+	return free_continues > 0 or coins >= continue_cost
 
 
 ## Called from the player when the death animation settles. Offers a paid
@@ -207,11 +249,15 @@ func player_died() -> void:
 		end_game()
 
 
-## Purchase a continue: spend coins, revive, and resume play.
+## Purchase a continue: spend a free GUARDIAN revive if available, else coins, then
+## revive and resume play.
 func do_continue() -> void:
-	coins -= continue_cost
+	if free_continues > 0:
+		free_continues -= 1
+	else:
+		coins -= continue_cost
+		continue_cost *= 2
 	continues_used += 1
-	continue_cost *= 2
 	coins_changed.emit(coins)
 	_save_progress()
 	Engine.time_scale = 1.0
@@ -282,15 +328,82 @@ func _on_near_miss() -> void:
 	add_points(NEAR_MISS_POINTS)
 
 
+## --- Meta-progression shop API ---
+
+## Current owned level of a permanent upgrade (0 = not bought).
+func upgrade_level(id: String) -> int:
+	return int(_upgrades.get(id, 0))
+
+
+## Highest purchasable level of an upgrade.
+func upgrade_max(id: String) -> int:
+	return int(UPGRADES[id]["max"]) if UPGRADES.has(id) else 0
+
+
+## Whether the upgrade is fully purchased (no further tiers).
+func upgrade_is_maxed(id: String) -> bool:
+	return upgrade_level(id) >= upgrade_max(id)
+
+
+## Coin cost of the NEXT tier of an upgrade (base + step·current_level).
+func upgrade_cost(id: String) -> int:
+	if not UPGRADES.has(id):
+		return 0
+	var u: Dictionary = UPGRADES[id]
+	return int(u["cost"]) + int(u["step"]) * upgrade_level(id)
+
+
+## Whether the player can afford and isn't maxed on this upgrade.
+func can_buy_upgrade(id: String) -> bool:
+	if not UPGRADES.has(id) or upgrade_is_maxed(id):
+		return false
+	return coins >= upgrade_cost(id)
+
+
+## Spend coins to buy the next tier of an upgrade. Persists immediately. Returns
+## true on success.
+func buy_upgrade(id: String) -> bool:
+	if not can_buy_upgrade(id):
+		return false
+	coins -= upgrade_cost(id)
+	var new_level := upgrade_level(id) + 1
+	_upgrades[id] = new_level
+	coins_changed.emit(coins)
+	upgrade_purchased.emit(id, new_level)
+	_save_progress()
+	return true
+
+
+## Coin payout multiplier from the LUCKY CHARM upgrade.
+func coin_multiplier() -> float:
+	return 1.0 + 0.25 * float(upgrade_level("COINMULT"))
+
+
+## Applies all purchased upgrades to a fresh run. Called from [method start_game]
+## AFTER the per-run managers reset, so it layers on top of a clean slate.
+func _apply_meta_upgrades() -> void:
+	PowerUpManager.air_jumps = maxi(PowerUpManager.air_jumps, upgrade_level("AIRJUMP"))
+	PowerUpManager.permanent_magnet = upgrade_level("MAGNET") > 0
+	free_continues = upgrade_level("REVIVE")
+	for _i in upgrade_level("STARTGUN"):
+		GunManager.add_gun("PISTOL")
+
+
 func _load_high_score() -> void:
 	if _config.load(SAVE_PATH) == OK:
 		high_score = _config.get_value("score", "high", 0)
 		best_distance = _config.get_value("score", "best_distance", 0.0)
 		coins = _config.get_value("meta", "coins", 0)
+		for id in UPGRADES.keys():
+			var lvl: int = int(_config.get_value("upgrades", id, 0))
+			if lvl > 0:
+				_upgrades[id] = clampi(lvl, 0, upgrade_max(id))
 
 
 func _save_progress() -> void:
 	_config.set_value("score", "high", high_score)
 	_config.set_value("score", "best_distance", best_distance)
 	_config.set_value("meta", "coins", coins)
+	for id in UPGRADES.keys():
+		_config.set_value("upgrades", id, upgrade_level(id))
 	_config.save(SAVE_PATH)

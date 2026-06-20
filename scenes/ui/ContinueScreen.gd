@@ -94,9 +94,14 @@ func _process(delta: float) -> void:
 
 
 func _refresh() -> void:
-	_label.text = "CONTINUE?\n%d COINS  (you have %d)\n\nTAP  ·  %d" % [
-		GameManager.continue_cost, GameManager.coins, int(ceil(_time_left))
-	]
+	if GameManager.free_continues > 0:
+		_label.text = "CONTINUE?\n★ FREE REVIVE ★  (%d left)\n\nTAP  ·  %d" % [
+			GameManager.free_continues, int(ceil(_time_left))
+		]
+	else:
+		_label.text = "CONTINUE?\n%d COINS  (you have %d)\n\nTAP  ·  %d" % [
+			GameManager.continue_cost, GameManager.coins, int(ceil(_time_left))
+		]
 
 
 func _input(event: InputEvent) -> void:

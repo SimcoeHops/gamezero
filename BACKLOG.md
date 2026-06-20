@@ -14,14 +14,6 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
      #6 Progression & retention (2) and #10 Accessibility (2); #5 Audio (3) close
      behind. These attack those. See JOURNAL scorecard. -->
 
-- [ ] **Meta-progression coin shop** (Progression #6 — the biggest retention hole):
-      persistent `coins` currently only buy mid-run continues. Add a SHOP reachable from
-      the front-end that spends coins on PERMANENT upgrades that apply at `start_game`
-      (e.g. starting gun, +1 air-jump, always-on coin magnet, +1 free revive, score/coin
-      multiplier). Persist owned upgrades in the existing ConfigFile; apply them in
-      `GameManager.start_game`/relevant autoloads. Keep the UI simple Buttons (no custom
-      `_draw`) so it's headless-verifiable via the apply-logic path. This is the #1
-      "why grind coins" lever.
 - [ ] **Daily challenge + missions/goals** (Progression #6): 3 rotating goals
       ("near-miss 20 cars", "reach Neon", "own 4 guns at once") with a coin reward + a
       visible streak counter. Seed the daily from the date so it's deterministic. Surface
@@ -82,8 +74,6 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       fill gaps (UI, level-up, milestone, tunnel whoosh); balance the mix.
 
 ## PROGRESSION & RETENTION (the top-10 stickiness)
-- [ ] Meta-progression shop: spend persistent `coins` on permanent unlocks/upgrades
-      (starting gun, extra air-jump, coin magnet, revive). Power that persists between runs.
 - [ ] Daily challenge + goals/missions ("near-miss 20 cars", "reach Neon") with rewards and
       a streak. This is the #1 retention driver for runners.
 - [ ] Local leaderboard / personal-best chase with juicy "NEW BEST!" celebration.
@@ -118,6 +108,32 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Meta-progression coin shop** (2026-06-19, iter 6) — attacks the lowest rubric score
+      (#6 Progression, 2). Persistent `coins` used to ONLY buy mid-run continues; now there's
+      a real reason to grind. Added an UPGRADE SHOP reachable from the title (`FrontEnd._show_shop`
+      + `_make_upgrade_row`, plain Buttons/Panels so it's headless-verifiable — no custom `_draw`)
+      that spends coins on 5 PERMANENT, tiered upgrades applied at `start_game`:
+      **SIDEARM** (start armed with a Pistol, +1 level/tier, max 3), **AIR DASH** (start with a
+      double jump), **COIN MAGNET** (always-on magnet — new `PowerUpManager.permanent_magnet`),
+      **GUARDIAN** (start with N free no-coin revives, max 2), **LUCKY CHARM** (+25% coins/run
+      per level, max 4). Costs tier up (base + step·level). Owned levels persist in the existing
+      ConfigFile (`[upgrades]` section, back-compatible). `GameManager` gained the shop API
+      (`UPGRADES` const, `upgrade_level/cost/is_maxed/can_buy/buy_upgrade`, `coin_multiplier`,
+      `_apply_meta_upgrades`), `free_continues` (spent before coins in `do_continue`/`can_continue`),
+      and `ContinueScreen` shows "★ FREE REVIVE ★" when a Guardian revive is available. Title screen
+      now shows an `UPGRADES ◎n` button. Files: `GameManager.gd`, `PowerUpManager.gd`,
+      `FrontEnd.gd`, `ContinueScreen.gd`, `BACKLOG.md`, `JOURNAL.md`. Verified: clean headless boot;
+      exercised the full apply path via the `Main._ready` swap (bought all 5, maxed STARTGUN→3 /
+      COINMULT→4, confirmed cost tiering, then `start_game` showed air_jumps=1, permanent_magnet=true,
+      free_revives=1, PISTOL lvl3, coin mult 2.0) AND the shop UI build + buy→rebuild path windowed
+      (no errors); restored Main.gd/FrontEnd + reset the dev save.
+      - [ ] Human playtest: shop layout/readability at real resolution (5 PanelContainer rows +
+            heading + balance + BACK — should fit 720p+ but a ScrollContainer may be wanted if more
+            upgrades are added); the buy SFX (`play_unlock` on success, `play_ui` on fail); and the
+            ECONOMY BALANCE — costs (120–580) vs coin earn (~score/10 · charm mult) may need tuning
+            so the first upgrade is reachable in a few runs but the full board takes a while.
+      - [ ] Follow-up: a juicier purchase moment (coin-spend animation, row flash/punch, particle)
+            and gate the existing character skins behind coins/achievements (skins are currently free).
 - [x] **Per-gun distinct fire SFX** (2026-06-19, iter 5) — every gun used to call
       `AudioManager.play_laser`, so a stacked loadout sounded like one repeated zap.
       Added per-gun shot voices: new banks `_g_low`/`_g_zap`/`_g_three`/`_g_trash`

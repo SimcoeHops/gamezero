@@ -63,6 +63,9 @@ var bullet_count: int = 1
 var fire_mode: FireMode = FireMode.BULLETS
 ## Extra mid-air jumps granted (0 = single jump, 1 = double jump).
 var air_jumps: int = 0
+## Always-on coin magnet from a purchased meta upgrade (set by GameManager at
+## start_game). Keeps [method is_magnet_active] true for the whole run.
+var permanent_magnet: bool = false
 
 var _star_timer: float = 0.0
 var _magnet_timer: float = 0.0
@@ -109,6 +112,7 @@ func reset() -> void:
 	bullet_count = 1
 	fire_mode = FireMode.BULLETS
 	air_jumps = 0
+	permanent_magnet = false
 	_star_timer = 0.0
 	_magnet_timer = 0.0
 	powerups_changed.emit()
@@ -136,7 +140,7 @@ func speed_time_left() -> float:
 
 
 func is_magnet_active() -> bool:
-	return _magnet_timer > 0.0
+	return _magnet_timer > 0.0 or permanent_magnet
 
 
 func magnet_time_left() -> float:
