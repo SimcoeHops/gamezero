@@ -268,6 +268,10 @@ func _on_game_state_changed(new_state: int) -> void:
 func _on_hitbox_body_entered(body: Node) -> void:
 	if current_state == State.RAGDOLL or current_state == State.DEAD:
 		return
+	# During the level-up choice the world is frozen in slow-mo; collisions are on
+	# hold so a drifting car can't kill the player while they're picking a weapon.
+	if GameManager.current_state == GameManager.GameState.LEVEL_UP:
+		return
 	# Ignore wrecked debris flying back through us — only live, approaching cars
 	# are a threat (otherwise a gun-blasted car raining down would "kill" us).
 	if body.has_method("is_live") and not body.is_live():
@@ -317,6 +321,12 @@ func _physics_process(delta: float) -> void:
 	# treat it as a crash so the run always ends instead of falling forever.
 	if current_state != State.RAGDOLL and current_state != State.DEAD and global_position.y < -10.0:
 		activate_ragdoll(Vector3.ZERO)
+		return
+
+	# During the slow-mo weapon choice the runner holds in a frozen tableau — no
+	# movement, no firing, no stray input — so the beat reads as a deliberate
+	# time-stop rather than a slow drift. (Collisions are already guarded too.)
+	if GameManager.current_state == GameManager.GameState.LEVEL_UP:
 		return
 
 	match current_state:

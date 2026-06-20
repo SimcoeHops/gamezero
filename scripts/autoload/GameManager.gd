@@ -29,7 +29,14 @@ signal continue_offered(cost: int)
 ## Emitted when a continue is purchased (revive the run).
 signal continued()
 
-enum GameState { MENU, PLAYING, GAME_OVER, REVIVE_OFFER }
+## Emitted when a level-up offers a choice of guns. [param choices] is an array of
+## gun-description dicts (see GunManager.describe). The LevelUpScreen renders these.
+signal level_up_offered(choices: Array, level: int)
+
+## Emitted when the level-up choice resolves and play resumes.
+signal level_up_resolved()
+
+enum GameState { MENU, PLAYING, GAME_OVER, REVIVE_OFFER, LEVEL_UP }
 
 ## Cost of the first continue; doubles each use.
 const BASE_CONTINUE_COST := 50
@@ -74,6 +81,16 @@ var biome_log: Array = []
 var combo: int = 1
 var _combo_timer: float = 0.0
 
+## --- Level-up "choose a weapon" cadence ---
+## Current loadout level (1 at run start; +1 each level-up choice taken).
+var level: int = 1
+## Dodge count at which the next level-up triggers.
+var _next_level_at: int = FIRST_LEVEL_DODGES
+## Dodges before the first level-up; gaps widen after each (see _offer_level_up).
+const FIRST_LEVEL_DODGES := 7
+## How deeply time slows while the player picks a weapon (cinematic slow-mo).
+const LEVELUP_TIME_SCALE := 0.08
+
 ## Continue economy for the current run.
 var continue_cost: int = BASE_CONTINUE_COST
 var continues_used: int = 0
@@ -109,6 +126,8 @@ func start_game() -> void:
 	highway_speed = 15.0
 	combo = 1
 	_combo_timer = 0.0
+	level = 1
+	_next_level_at = FIRST_LEVEL_DODGES
 	continue_cost = BASE_CONTINUE_COST
 	continues_used = 0
 	ProgressionManager.reset()
@@ -211,8 +230,41 @@ func add_points(base: int) -> void:
 	score_updated.emit(score)
 
 
-func _on_dodge_registered(_total: int) -> void:
+func _on_dodge_registered(total: int) -> void:
 	add_points(DODGE_POINTS)
+	# Vampire-Survivors style level-up: every so many dodges, slow time and let the
+	# player pick a weapon to add/upgrade. Only fires during live play (never mid
+	# ragdoll / revive offer / an already-open choice).
+	if current_state == GameState.PLAYING and total >= _next_level_at:
+		_offer_level_up()
+
+
+## Slows time and presents a 3-gun choice. The LevelUpScreen draws the cards and
+## calls [method resolve_level_up] when the player picks.
+func _offer_level_up() -> void:
+	level += 1
+	# Gaps widen as the run goes on so level-ups stay special: 7, 19, 33, 49, 67...
+	_next_level_at += 8 + level * 2
+	var choices: Array = GunManager.roll_level_up_choices(3)
+	if choices.is_empty():
+		return
+	Engine.time_scale = LEVELUP_TIME_SCALE
+	current_state = GameState.LEVEL_UP
+	state_changed.emit(current_state)
+	level_up_offered.emit(choices, level)
+	print("[GameManager] Level up ", level, " — choose a weapon")
+
+
+## Applies the chosen gun (empty id = skip) and resumes play at full speed.
+func resolve_level_up(gun_id: String) -> void:
+	if current_state != GameState.LEVEL_UP:
+		return
+	if gun_id != "":
+		GunManager.add_gun(gun_id)
+	Engine.time_scale = 1.0
+	current_state = GameState.PLAYING
+	level_up_resolved.emit()
+	state_changed.emit(current_state)
 
 
 func _on_near_miss() -> void:

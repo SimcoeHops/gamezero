@@ -22,6 +22,7 @@ HOURS="${1:-6}"            # how long to run
 MODEL="${2:-claude-opus-4-8}"
 MAX_TURNS=40              # per-iteration cap so one task can't burn the whole quota
 SLEEP_BETWEEN=15         # breather between iterations
+MAX_NOPROGRESS=3         # stop after this many iters in a row with no committable progress
 
 cd "$PROJECT" || { echo "FATAL: $PROJECT not found"; exit 1; }
 
@@ -58,41 +59,86 @@ git push -u origin "$BRANCH" >>"$RUN_LOG" 2>&1 && log "Pushed branch to GitHub" 
 
 # ---- the loop --------------------------------------------------------------
 END=$(( $(date +%s) + HOURS*3600 ))
-ITER=0
-PASSES=0
-FAILS=0
+ITER=0; PASSES=0; FAILS=0; NOPROG=0
+STOP_REASON="time budget reached"
+# Phrases that mean Claude hit a usage / rate-limit / overload wall (expected on a
+# plan without extra context once the 5-hour window is exhausted).
+WALL_RE="usage limit|rate limit|rate.?limited|limit reached|limit will reset|resets at|out of (usage|tokens)|insufficient quota|quota exceeded|overloaded|too many requests|status (429|529)|error: ?(429|529)"
 
 while [ "$(date +%s)" -lt "$END" ]; do
   ITER=$((ITER+1))
   log "===== Iteration $ITER (branch $BRANCH) ====="
 
+  # Capture this iteration's output so we can inspect it for a usage wall.
+  ITER_OUT="$LOG_DIR/iter-$TS-$ITER.out"
   claude -p "$(cat "$PROJECT/tools/overnight/AGENT_BRIEF.md")" \
     --dangerously-skip-permissions \
     --model "$MODEL" \
     --max-turns "$MAX_TURNS" \
-    >>"$RUN_LOG" 2>&1
-  log "Claude Code finished iteration $ITER (exit $?)"
+    >"$ITER_OUT" 2>&1
+  CC_EXIT=$?
+  cat "$ITER_OUT" >>"$RUN_LOG"
+  log "Claude Code finished iteration $ITER (exit $CC_EXIT)"
 
+  WALL=0
+  grep -qiE "$WALL_RE" "$ITER_OUT" && WALL=1
+
+  # Gate whatever ended up on disk — this still saves good *partial* work if Claude
+  # was cut off mid-task, and reverts anything broken.
+  COMMITTED=0
   if bash "$PROJECT/tools/overnight/smoke_test.sh" >>"$RUN_LOG" 2>&1; then
-    PASSES=$((PASSES+1))
-    log "Smoke PASS — committing"
     git add -A
-    git commit -qm "overnight iter $ITER: passed smoke ($(date +%H:%M))" 2>/dev/null \
-      && log "committed" || log "(no changes to commit this iter)"
-    git push origin "$BRANCH" >>"$RUN_LOG" 2>&1 && log "pushed" || log "WARN: push failed"
+    if git commit -qm "overnight iter $ITER: passed smoke ($(date +%H:%M))" 2>/dev/null; then
+      PASSES=$((PASSES+1)); COMMITTED=1; log "Smoke PASS — committed"
+      git push origin "$BRANCH" >>"$RUN_LOG" 2>&1 && log "pushed" || log "WARN: push failed"
+    else
+      log "Smoke PASS — nothing changed this iteration"
+    fi
   else
     FAILS=$((FAILS+1))
     log "Smoke FAIL — reverting iteration $ITER to last good commit"
     git reset --hard HEAD >>"$RUN_LOG" 2>&1
     git clean -fd        >>"$RUN_LOG" 2>&1   # ignored files (logs) are preserved
   fi
+  rm -f "$ITER_OUT"
+
+  # --- stop conditions ---
+  if [ "$WALL" -eq 1 ]; then
+    STOP_REASON="hit Claude usage / rate-limit wall at iteration $ITER"
+    log "Detected a Claude usage/limit wall — stopping cleanly (resume in the morning)."
+    break
+  fi
+  if [ "$COMMITTED" -eq 1 ]; then NOPROG=0; else NOPROG=$((NOPROG+1)); fi
+  if [ "$NOPROG" -ge "$MAX_NOPROGRESS" ]; then
+    STOP_REASON="$NOPROG iterations made no committable progress (likely a usage wall or stuck) — stopped at iteration $ITER"
+    log "$STOP_REASON"
+    break
+  fi
 
   sleep "$SLEEP_BETWEEN"
 done
 
+# ---- wrap up ---------------------------------------------------------------
+{
+  echo ""
+  echo "## $(date '+%Y-%m-%d %H:%M') — overnight run ended"
+  echo "Reason: $STOP_REASON"
+  echo "Iterations: $ITER ($PASSES committed, $FAILS reverted). Branch: $BRANCH"
+  if echo "$STOP_REASON" | grep -qiE "wall|no committable"; then
+    echo "This is expected without extra context: the ~5-hour usage window was exhausted."
+    echo "Resume any time (the window resets within ~5h) with:"
+    echo "    caffeinate -i bash tools/overnight/run_overnight.sh <hours>"
+    echo "A fresh overnight/<timestamp> branch starts and work continues from BACKLOG.md / JOURNAL.md."
+  fi
+} >> "$PROJECT/tools/overnight/JOURNAL.md"
+# Preserve the summary note on the branch too.
+git add tools/overnight/JOURNAL.md >/dev/null 2>&1 \
+  && git commit -qm "overnight: run summary ($(date +%H:%M))" >/dev/null 2>&1 \
+  && git push origin "$BRANCH" >>"$RUN_LOG" 2>&1 || true
+
 log "=========================================================="
-log "Done. $ITER iterations: $PASSES passed, $FAILS reverted."
-log "Branch: $BRANCH"
-log "Review:  git log --oneline $BRANCH"
-log "         git diff main..$BRANCH      (then merge/cherry-pick what you like)"
-log "Open the project in Godot to playtest. Journal: tools/overnight/JOURNAL.md"
+log "Done. Reason: $STOP_REASON"
+log "$ITER iterations: $PASSES committed, $FAILS reverted. Branch: $BRANCH"
+log "Review:  git log --oneline $BRANCH   |   git diff main..$BRANCH"
+log "Resume:  caffeinate -i bash tools/overnight/run_overnight.sh <hours>"
+log "The 8am digest will summarize JOURNAL.md. Open Godot to playtest."

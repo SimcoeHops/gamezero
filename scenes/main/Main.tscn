@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scenes/main/Main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/highway/Highway.tscn" id="2"]
@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://scenes/ui/ContinueScreen.gd" id="9"]
 [ext_resource type="Script" path="res://scenes/ui/FrontEnd.gd" id="10"]
 [ext_resource type="Script" path="res://scenes/ui/PauseMenu.gd" id="11"]
+[ext_resource type="Script" path="res://scenes/ui/LevelUpScreen.gd" id="12"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
 sky_top_color = Color(0.02, 0.05, 0.15, 1.0)
@@ -105,6 +106,13 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 script = ExtResource("11")
+
+[node name="LevelUpScreen" type="Control" parent="CanvasLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("12")
 
 [node name="Audio" type="Node" parent="."]
 

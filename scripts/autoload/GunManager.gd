@@ -30,46 +30,55 @@ const GUNS := {
 	"PISTOL": {
 		"name": "PISTOL", "model": "blaster-a", "color": Color(1.0, 0.85, 0.25),
 		"pattern": Pattern.SINGLE, "cooldown": 0.5, "speed": 70.0, "scale": 1.0,
+		"blurb": "Reliable single shots.",
 	},
 	"RAPID": {
 		"name": "RAPID", "model": "blaster-b", "color": Color(1.0, 0.55, 0.1),
 		"pattern": Pattern.BURST, "cooldown": 0.09, "speed": 80.0, "scale": 0.85,
 		"burst_count": 14, "burst_pause": 1.4,
+		"blurb": "Long automatic bursts.",
 	},
 	"SHOTGUN": {
 		"name": "SHOTGUN", "model": "blaster-c", "color": Color(1.0, 0.4, 0.15),
 		"pattern": Pattern.SHOTGUN, "cooldown": 0.85, "speed": 60.0, "scale": 1.0,
 		"pellets": 5, "spread_deg": 26.0,
+		"blurb": "Wide close-range blast.",
 	},
 	"LASER": {
 		"name": "LASER", "model": "blaster-d", "color": Color(1.0, 0.2, 0.85),
 		"pattern": Pattern.LASER, "cooldown": 0.35, "speed": 110.0, "scale": 0.9,
 		"piercing": true,
+		"blurb": "Piercing instant beam.",
 	},
 	"MORTAR": {
 		"name": "MORTAR", "model": "grenade-a", "color": Color(0.5, 1.0, 0.4),
 		"pattern": Pattern.MORTAR, "cooldown": 1.3, "speed": 26.0, "scale": 1.3,
 		"aoe": 6.0, "lob_gravity": 22.0, "lob_vy": 7.0,
+		"blurb": "Lobbed area explosions.",
 	},
 	"SPREAD": {
 		"name": "SPREAD", "model": "blaster-e", "color": Color(0.35, 0.85, 1.0),
 		"pattern": Pattern.SPREAD, "cooldown": 0.55, "speed": 75.0, "scale": 1.0,
 		"pellets": 3, "spread_deg": 20.0,
+		"blurb": "Three-way scatter.",
 	},
 	"MINIGUN": {
 		"name": "MINIGUN", "model": "blaster-f", "color": Color(1.0, 0.95, 0.6),
 		"pattern": Pattern.MINIGUN, "cooldown": 0.06, "speed": 90.0, "scale": 0.7,
 		"spread_deg": 9.0,
+		"blurb": "Relentless bullet hose.",
 	},
 	"RAILGUN": {
 		"name": "RAILGUN", "model": "blaster-g", "color": Color(0.7, 0.4, 1.0),
 		"pattern": Pattern.RAIL, "cooldown": 1.6, "speed": 150.0, "scale": 1.8,
 		"piercing": true,
+		"blurb": "Heavy piercing slug.",
 	},
 	"NET": {
 		"name": "NET", "model": "blaster-r", "color": Color(0.3, 1.0, 0.55),
 		"pattern": Pattern.NET, "cooldown": 0.95, "speed": 34.0, "scale": 1.0,
 		"piercing": true, "width": 4.4,
+		"blurb": "Wide sweeping catch.",
 	},
 }
 
@@ -209,6 +218,45 @@ func status() -> Array:
 ## A random gun id, for gate pickups.
 func random_gun_id() -> String:
 	return GUN_IDS[randi() % GUN_IDS.size()]
+
+
+## Rolls [param n] distinct gun choices for the level-up "pick one" screen.
+## Brand-new guns are surfaced first (the meaningful "expand your loadout" choice),
+## with owned guns offered as level-ups to fill the remaining slots. Each entry is a
+## self-describing dict the card UI renders directly.
+func roll_level_up_choices(n: int = 3) -> Array:
+	var fresh: Array = []
+	var leveled: Array = []
+	for id in GUN_IDS:
+		if owned.has(id):
+			leveled.append(id)
+		else:
+			fresh.append(id)
+	fresh.shuffle()
+	leveled.shuffle()
+	var pool: Array = fresh + leveled
+	var out: Array = []
+	for id in pool:
+		if out.size() >= n:
+			break
+		out.append(describe(id))
+	return out
+
+
+## Self-describing dict for a gun, used by the level-up cards and any gun UI:
+## {id, name, color, blurb, level, is_new, is_max}.
+func describe(id: String) -> Dictionary:
+	var g: Dictionary = GUNS.get(id, {})
+	var lvl: int = int(owned.get(id, 0))
+	return {
+		"id": id,
+		"name": g.get("name", id),
+		"color": g.get("color", Color.WHITE),
+		"blurb": g.get("blurb", ""),
+		"level": lvl,
+		"is_new": lvl == 0,
+		"is_max": lvl >= MAX_LEVEL,
+	}
 
 
 func gun_color(id: String) -> Color:

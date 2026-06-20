@@ -325,6 +325,11 @@ func _on_body_entered(body: Node) -> void:
 	if state != CarState.APPROACHING:
 		return
 
+	# Collisions are on hold during the slow-mo level-up choice (mirrors the
+	# player's hitbox guard — both paths must stay in sync).
+	if GameManager.current_state == GameManager.GameState.LEVEL_UP:
+		return
+
 	if body is PlayerController:
 		var impact_vel := Vector3(0, 0, approach_speed)
 		var impact_point := global_position + Vector3(0, 0, 1.0)

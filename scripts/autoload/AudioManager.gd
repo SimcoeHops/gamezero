@@ -396,9 +396,12 @@ func _fill_music() -> void:
 
 
 func _on_state_changed(new_state: int) -> void:
-	# A fresh run shuffles in a new song from the top. A paid continue
-	# (REVIVE_OFFER -> PLAYING) keeps the current song going.
-	if new_state == GameManager.GameState.PLAYING and _prev_state != GameManager.GameState.REVIVE_OFFER:
+	# A fresh run shuffles in a new song from the top. Returning to PLAYING from a
+	# paid continue (REVIVE_OFFER) or a level-up weapon choice (LEVEL_UP) keeps the
+	# current song going — those are pauses within a run, not new runs.
+	var resuming := _prev_state == GameManager.GameState.REVIVE_OFFER \
+		or _prev_state == GameManager.GameState.LEVEL_UP
+	if new_state == GameManager.GameState.PLAYING and not resuming:
 		_start_run_music()
 	_prev_state = new_state
 

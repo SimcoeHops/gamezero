@@ -10,11 +10,6 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## NOW — highest leverage (do these first)
 
-- [ ] **Level-up "choose your gun" moment (the core fun lever).** Vampire-Survivors' magic is
-      the pick-1-of-3 upgrade screen. On milestone/level-up, briefly slow time and present 3
-      gun/upgrade cards to pick from (reuse GunManager `GUNS` + the FrontEnd card styling).
-      This converts passive pickups into *meaningful choices* — the single biggest "one more
-      run" multiplier. Make the card reveal + selection juicy (slow-mo, sound, punch).
 - [ ] **Crash sequence, taken to "wow".** Crashing is the signature spectacle (pillar #2).
       Layer it: brief hit-stop → slow-mo → camera punch + heavy shake → debris/glass particles
       → screen flash + chromatic aberration → crunch SFX stack → haptic. Then a satisfying
@@ -105,3 +100,14 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Level-up "choose your gun" moment** (2026-06-19) — Vampire-Survivors pick-1-of-3.
+      `LevelUpScreen.gd` (staggered ease-back card pop-in, level pips, NEW/MAX/upgrade badges,
+      per-pattern glyph icons, slow-mo backdrop). GameManager drives the cadence (dodge-count
+      thresholds: 7,19,33,49…), `Engine.time_scale=0.08` slow-mo, `LEVEL_UP` state +
+      `level_up_offered/resolved` signals; GunManager `roll_level_up_choices()`/`describe()`.
+      Collisions guarded on BOTH paths (player hitbox + car body) and the runner now freezes
+      into a tableau during the choice (PlayerController `_physics_process` guard). Keyboard
+      1/2/3 picks for desktop. Verified headless end-to-end (offer→build→resolve, owned updates).
+      Follow-ups: distinct per-card pick SFX + a proper "LEVEL UP" musical stinger (currently
+      reuses `play_unlock`); show the chosen gun's GLB on the card instead of a glyph chip;
+      consider an XP/level bar on the HUD so the next level-up is anticipated.
