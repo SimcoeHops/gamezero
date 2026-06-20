@@ -690,3 +690,61 @@ auto-completes after only 2 m of lateral travel — on a packed first wave a pla
 that far before reading the prompt; acceptable (they *learned by doing*), but worth a look.
 **Design flag for the human (not shipped):** the timed-gun model (guns expire after 20 s) is in
 tension with the VISION "build-a-loadout power fantasy" pillar — logged as a NOW item to decide.
+
+---
+
+## 2026-06-19 — Coin pickup juice: "delicious" collection (iter 13, Build mode)
+
+**What & why:** Closed the single most-repeatedly-flagged gap in the game — coin collection,
+called out as "the one dull moment in an otherwise loud game" in **four consecutive deep
+audits** (iters 4, 8, 12 + the iter-4 origin). Picked it over the open NOW structural items
+because it's a pure juice/feel win (VISION: "Juice over features, Fun over everything"), fully
+headless+windowed-verifiable, and low regression risk — exactly the safe, complete, *juicy*
+increment the brief asks for, and it finally retires a standing liability. Before: a single
+fixed-pitch blip + 0.04 trauma + instant `queue_free`; the magnet only worked with the orb.
+
+**The four layers:**
+- **Always-on grab magnet** (`scenes/coin/Coin.gd`): any coin within a gentle `AUTO_MAGNET_RADIUS`
+  (2.6 m — deliberately *under* the 2.75 m lane gap so it never yanks a coin from an adjacent lane
+  you didn't commit to; preserves the "weave to grab" skill) homes toward the player with a pull
+  that **accelerates as it nears** (`lerpf(26, 7, dist/R)` → faster up close) for a snappy "snap-in"
+  grab. The orb magnet keeps its larger `PowerUpManager.MAGNET_RADIUS` far-range pull (branch kept).
+- **Rising-pitch "coin run"** (`GameManager` + `AudioManager`): new `coin_streak` ramps on rapid
+  collects (`COIN_STREAK_WINDOW` 0.7 s, cap `COIN_STREAK_MAX` 16), ticked down in `_process` and
+  reset in `start_game`. `play_coin(streak)` now climbs **+0.075 pitch/step** (cap 14) so a string
+  of coins is a satisfying Mario-style ascending scale instead of one repeated zap.
+- **Sparkle burst** (`Coin._spawn_sparkle`): a gold, additive, billboarded `CPUParticles3D`
+  one-shot (8→16 sparks scaling with streak, 0.45 s life, gravity, alpha-fade `color_ramp` +
+  shrink `scale_amount_curve`) at the exact pickup point. Parented to the **spawner** so it
+  survives the coin's immediate `queue_free`; self-frees via a 0.8 s SceneTreeTimer.
+- **HUD juice** (`scenes/ui/HUD.gd`): new `GameManager.coin_collected(streak)` signal drives a
+  **streak-heated counter punch** (scale 1.22→1.62, color gold→white-hot as the streak climbs) and
+  a rising, fading **"+1" floater** above the counter (reads "+1  xN" at streak ≥3). The old
+  `coins_changed` handler now only sets the text (so shop/continue coin changes don't double-pop).
+
+**Files touched:** `scripts/autoload/GameManager.gd` (`coin_collected` signal, `coin_streak` +
+window const, streak logic in `collect_coin`, reset in `_process`/`start_game`),
+`scripts/autoload/AudioManager.gd` (`play_coin(streak)`), `scenes/coin/Coin.gd` (auto-magnet +
+`_spawn_sparkle`), `scenes/ui/HUD.gd` (`_on_coin_collected` + `_spawn_coin_floater`, text-only
+`_on_coins_changed`), `BACKLOG.md`, this journal.
+
+**Verified (per CLAUDE.md):** Clean headless boot (no `error|script|parse|invalid|shader`). One
+caught bug en route: `CPUParticles3D` takes a raw `Curve`/`Gradient` for `scale_amount_curve`/
+`color_ramp` (not the `CurveTexture`/`GradientTexture1D` wrappers GPU process-materials use) — the
+parse error surfaced on the first boot and was fixed. Exercised the full chain via the documented
+`Main._ready` swap (`_coin_test`), **headless and windowed**: rapid `collect_coin` ramped the
+streak **1→5**, it **reset to 0** after a >0.7 s gap, a fresh collect went back to **1**; a real
+`Coin` instance's `_spawn_sparkle(8)` added a `CPUParticles3D` to the spawner (`emitting=true`,
+`amount=14` = 8 + int(8·0.8)) with no error; the HUD's `coin_collected` handler ran on all six
+emissions cleanly. Restored `Main.gd` from `/tmp/Main.gd.bak` (grep confirms `_coin_test`/`COINTEST`
+gone, `_front_end.begin()` back), re-ran a clean headless boot.
+
+**Unverified / risk — human should playtest (GPU/feel unconfirmed):** the **auto-magnet feel** —
+2.6 m radius + 7→26 m/s accelerating pull: does it read as forgiving without grabbing coins you
+intentionally weaved past? (tune `AUTO_MAGNET_RADIUS` / the `lerpf` in `Coin._physics_process`). The
+**streak pitch ramp** (+0.075/step, cap 14 → up to ~+1.05 pitch) — exciting vs shrill on a long
+run? The **sparkle** density/brightness against the existing glow post (additive gold may bloom).
+The **"+1" floater** placement (top-right, under the `◎` counter) and the streak-heated punch at
+real resolution. All knobs are the named constants. Low-risk note: the floater + sparkle add a
+transient `Label`/`CPUParticles3D` per coin (both self-free) — negligible, but it's the first
+per-pickup allocation on the hot coin path, so it's worth a glance if/when the pooling item lands.

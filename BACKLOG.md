@@ -80,8 +80,8 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       considered framing for the gun-carnage power fantasy.
 
 ## JUICE & FEEDBACK (every action earns a reaction)
-- [ ] Coin/pickup juice: magnetize coins to the player, rising-pitch collect chime, count-up
-      pop on the HUD, sparkle particle. Collecting should feel *delicious*.
+- [x] Coin/pickup juice — DONE iter 13 (see Done): always-on grab magnet, rising-pitch
+      "coin-run" streak chime, sparkle burst, streak-heated HUD "+1" floater.
 - [ ] Near-miss feedback: doppler whoosh, brief slow-mo flirt at very close passes, score
       popup, screen-edge speed-line spike.
 - [ ] Gun feel: muzzle flash, light kick, impact sparks + small hit-stop on crumple, tracer
@@ -141,6 +141,32 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Coin pickup juice — "delicious" collection** (2026-06-19, iter 13) — closes the gap
+      flagged in FOUR consecutive audits (#3 Juice): coin collection was the one dull moment in
+      a loud game (single fixed-pitch blip + 0.04 trauma + instant free; magnet only with the
+      orb). Now it's layered: (1) **always-on grab magnet** — `Coin.gd` pulls any coin within a
+      gentle 2.6 m radius (< the 2.75 m lane gap so it never yanks from an adjacent lane you
+      didn't commit to), with a pull that *accelerates* as the coin nears (lerp 7→26 m/s) for a
+      snappy grab; the orb magnet keeps its bigger far-range pull. (2) **Rising-pitch "coin-run"**
+      — new `GameManager.coin_streak` ramps on rapid collects (window `COIN_STREAK_WINDOW` 0.7 s,
+      cap 16, reset in `_process`/`start_game`); `AudioManager.play_coin(streak)` climbs +0.075
+      pitch/step so a run of coins is a satisfying Mario-style scale. (3) **Sparkle burst** — a
+      gold additive billboard `CPUParticles3D` one-shot at the pickup point (8→16 sparks with
+      streak), parented to the spawner so it survives the coin's free, self-frees at 0.8 s.
+      (4) **HUD juice** — new `coin_collected(streak)` signal drives a streak-heated counter
+      punch (bigger + gold→white-hot) and a rising/fading **"+1" floater** (shows "+1 x N" at
+      streak ≥3). Files: `scripts/autoload/GameManager.gd` (signal + streak + collect_coin),
+      `scripts/autoload/AudioManager.gd` (`play_coin(streak)`), `scenes/coin/Coin.gd`
+      (auto-magnet + `_spawn_sparkle`), `scenes/ui/HUD.gd` (floater + streak pop). Verified:
+      clean headless boot; exercised via the `Main._ready` swap (headless+windowed) — streak
+      climbed 1→5 on rapid collects, reset to 0 after the 0.7 s window, fresh collect = 1; the
+      sparkle `CPUParticles3D` spawned (`emitting=true`, amount 14 at streak 8) with no error;
+      the HUD `coin_collected` handler ran on every collect cleanly. Swap restored + re-verified.
+      - [ ] Human playtest (GPU/feel unverified): the auto-magnet 2.6 m radius / 7→26 m/s pull
+            (does it feel forgiving without auto-collecting things you weave past?), the streak
+            pitch ramp (+0.075/step, cap 14 — exciting vs shrill on a long run?), sparkle
+            density/brightness vs the glow post, and the "+1" floater placement under the counter
+            (top-right) at real res. Tune in the noted constants.
 - [x] **First-run control tutorial (non-blocking, play-integrated)** (2026-06-19, iter 12 deep
       audit ship) — attacks the audit's lowest score (#7 Onboarding, 2). The game taught nothing:
       abilities unlock progressively (jump@10 dodges, bullet-time@25, weapon@50) but the unlock

@@ -63,6 +63,7 @@ func _ready() -> void:
 	GameManager.score_updated.connect(_on_score_updated)
 	GameManager.combo_changed.connect(_on_combo_changed)
 	GameManager.coins_changed.connect(_on_coins_changed)
+	GameManager.coin_collected.connect(_on_coin_collected)
 	GameManager.biome_changed.connect(_on_biome_changed)
 	ProgressionManager.ability_unlocked.connect(_on_ability_unlocked)
 	ProgressionManager.milestone_reached.connect(_on_milestone_reached)
@@ -555,12 +556,45 @@ func _build_coin_label() -> void:
 
 
 func _on_coins_changed(coins: int) -> void:
+	# Text only — the in-run pickup juice (pop + floater) lives in _on_coin_collected so
+	# it can react to the streak; non-pickup changes (shop/continue) just update the count.
 	if _coin_label:
 		_coin_label.text = "◎ %d" % coins
-		_coin_label.pivot_offset = _coin_label.size * 0.5
-		var tw := create_tween()
-		_coin_label.scale = Vector2(1.25, 1.25)
-		tw.tween_property(_coin_label, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Per-coin pickup juice: the counter punches (bigger + warmer as the rapid-collect
+## streak climbs) and a "+1" floater rises and fades off the counter.
+func _on_coin_collected(streak: int) -> void:
+	if not _coin_label:
+		return
+	var t := clampf(float(streak) / 12.0, 0.0, 1.0)
+	var col := Color(1.0, 0.85, 0.25).lerp(Color(1.0, 1.0, 0.85), t)
+	_coin_label.add_theme_color_override("font_color", col)
+	_coin_label.pivot_offset = _coin_label.size * 0.5
+	var pop := 1.22 + 0.4 * t
+	var tw := create_tween()
+	_coin_label.scale = Vector2(pop, pop)
+	tw.tween_property(_coin_label, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_spawn_coin_floater(streak, col)
+
+
+func _spawn_coin_floater(streak: int, col: Color) -> void:
+	var f := Label.new()
+	f.text = "+1" if streak < 3 else "+1  x%d" % streak
+	f.add_theme_font_size_override("font_size", 20 + mini(streak, 10))
+	f.add_theme_color_override("font_color", col)
+	f.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	f.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	f.size = Vector2(180, 30)
+	var base := _coin_label.position + Vector2(_coin_label.size.x - 180, 36)
+	f.position = base
+	add_child(f)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(f, "position:y", base.y - 30.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(f, "modulate:a", 0.0, 0.6).set_ease(Tween.EASE_IN)
+	tw.set_parallel(false)
+	tw.tween_callback(f.queue_free)
 
 
 # --------------------------------------------------------------- star power

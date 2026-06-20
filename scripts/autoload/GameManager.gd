@@ -20,6 +20,10 @@ signal combo_changed(combo: int)
 ## Emitted when the coin total changes.
 signal coins_changed(coins: int)
 
+## Emitted each time a coin is collected, carrying the current rapid-collect streak
+## (1, 2, 3, …). Drives the rising-pitch chime + HUD "+1" floater juice.
+signal coin_collected(streak: int)
+
 ## Emitted when the world enters a new biome (for the HUD banner).
 signal biome_changed(biome_name: String)
 
@@ -109,6 +113,13 @@ var coins: int = 0
 ## Coins earned in the most recent run (for the game-over readout).
 var last_coins_earned: int = 0
 
+## Rapid-collect coin streak: grabbing coins in quick succession ramps a Mario-style
+## rising-pitch "coin run". Resets after COIN_STREAK_WINDOW with no pickup.
+const COIN_STREAK_WINDOW := 0.7
+const COIN_STREAK_MAX := 16
+var coin_streak: int = 0
+var _coin_streak_timer: float = 0.0
+
 ## Current highway speed — updated by CarSpawner, read by Highway for scroll.
 var highway_speed: float = 15.0
 
@@ -180,6 +191,11 @@ func _process(delta: float) -> void:
 		# Heat creeps up the longer this run stays clean; a hot combo stokes it.
 		var rate := FLOW_RAMP + FLOW_COMBO_GAIN * float(combo - 1)
 		flow_heat = minf(flow_heat + rate * delta, 1.0)
+		# Cool the rapid-collect coin streak once the player stops grabbing.
+		if _coin_streak_timer > 0.0:
+			_coin_streak_timer -= delta
+			if _coin_streak_timer <= 0.0:
+				coin_streak = 0
 
 
 ## Transition to the PLAYING state and reset all run data.
@@ -190,6 +206,8 @@ func start_game() -> void:
 	combo = 1
 	_combo_timer = 0.0
 	flow_heat = 0.0
+	coin_streak = 0
+	_coin_streak_timer = 0.0
 	run_level = 1
 	level_xp = 0
 	level_xp_needed = LEVEL_XP_BASE
@@ -240,7 +258,14 @@ func end_game() -> void:
 ## Collect a road coin (persistent currency + a little score).
 func collect_coin() -> void:
 	coins += 1
+	# Ramp the rapid-collect streak (or start a fresh one if the window lapsed).
+	if _coin_streak_timer > 0.0:
+		coin_streak = mini(coin_streak + 1, COIN_STREAK_MAX)
+	else:
+		coin_streak = 1
+	_coin_streak_timer = COIN_STREAK_WINDOW
 	coins_changed.emit(coins)
+	coin_collected.emit(coin_streak)
 	add_points(2)
 
 

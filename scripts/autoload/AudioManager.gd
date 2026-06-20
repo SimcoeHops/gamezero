@@ -274,8 +274,11 @@ func play_pickup() -> void:
 	_play(_pickup, 1.0, 1.25, -2.0)
 
 
-func play_coin() -> void:
-	_play(_pickup, 1.5, 1.9, -8.0)
+## Coin pickup chime. The pitch climbs with the rapid-collect streak so a "coin run"
+## reads as a rising, satisfying Mario-style scale (streak 1 = base).
+func play_coin(streak: int = 1) -> void:
+	var bump := 0.075 * float(mini(streak - 1, 14))
+	_play(_pickup, 1.5 + bump, 1.66 + bump, -8.0)
 
 
 func play_unlock() -> void:
