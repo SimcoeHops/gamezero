@@ -48,6 +48,10 @@ var _xp_display: float = 0.0
 var _display_score: float = 0.0
 ## Smoothed flow-state heat driving the warm edge-glow shader uniform.
 var _flow_display: float = 0.0
+## Transient speed-line spike (0..1) added on a near-miss, decays each frame, so the
+## streaks flare the instant you thread a car — a "whoosh past" punch on top of the
+## steady speed-driven intensity.
+var _nearmiss_spike: float = 0.0
 
 
 func _ready() -> void:
@@ -146,7 +150,9 @@ func _process(delta: float) -> void:
 		_update_speed_display()
 		if _fx_mat:
 			var t := clampf((GameManager.highway_speed - 25.0) / 60.0, 0.0, 1.0)
-			_fx_mat.set_shader_parameter("speed_intensity", t)
+			# A near-miss flares the streaks briefly on top of the steady speed value.
+			_nearmiss_spike = maxf(0.0, _nearmiss_spike - delta * 2.6)
+			_fx_mat.set_shader_parameter("speed_intensity", clampf(t + _nearmiss_spike, 0.0, 1.0))
 			_fx_mat.set_shader_parameter("impact_pulse", Juice.impact_pulse())
 			# Ease the warm flow glow toward the live heat (fast cool on a crash).
 			_flow_display = move_toward(_flow_display, GameManager.flow_heat,
@@ -309,8 +315,22 @@ func _update_combo_meter(_delta: float) -> void:
 
 # --------------------------------------------------------------- popups
 
-func _on_near_miss() -> void:
-	_show_popup("NEAR MISS!", Color(0.6, 0.95, 1.0), 0.42)
+func _on_near_miss(closeness: float = 0.5) -> void:
+	# Tier the payoff by how close the pass was: a lazy near-miss is a calm cyan note,
+	# a true graze is a hot, bigger "THREADED IT!" punch — and flares the speed-lines.
+	var word := "NEAR MISS!"
+	var col := Color(0.6, 0.95, 1.0)
+	var fsize := 40
+	if closeness >= 0.78:
+		word = "THREADED IT!"
+		col = Color(1.0, 0.55, 0.2)
+		fsize = 58
+	elif closeness >= 0.5:
+		word = "SO CLOSE!"
+		col = Color(0.7, 0.92, 1.0).lerp(Color(1.0, 0.8, 0.4), 0.5)
+		fsize = 48
+	_show_popup(word, col, 0.42, fsize)
+	_nearmiss_spike = maxf(_nearmiss_spike, 0.25 + 0.4 * closeness)
 
 
 ## Comic-book explosion words when the player stomps a car.
@@ -782,6 +802,7 @@ func _build_screen_fx() -> void:
 func reset() -> void:
 	_display_score = 0.0
 	_flow_display = 0.0
+	_nearmiss_spike = 0.0
 	if _fx_mat:
 		_fx_mat.set_shader_parameter("flow_heat", 0.0)
 	if _score_label:

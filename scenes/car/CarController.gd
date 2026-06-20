@@ -358,6 +358,9 @@ func _process(_delta: float) -> void:
 			_passed_player = true
 			state = CarState.DODGED
 			ProgressionManager.register_dodge()
-			# Close call? Reward it.
-			if absf(global_position.x - player_ref.global_position.x) < NEAR_MISS_DIST:
-				ProgressionManager.register_near_miss()
+			# Close call? Reward it — and tell the world HOW close, so a hair's-breadth
+			# graze earns a bigger thrill than a lazy near-miss (closeness 0..1, 1 = touching).
+			var lateral := absf(global_position.x - player_ref.global_position.x)
+			if lateral < NEAR_MISS_DIST:
+				var closeness := clampf(1.0 - lateral / NEAR_MISS_DIST, 0.0, 1.0)
+				ProgressionManager.register_near_miss(closeness)

@@ -990,3 +990,54 @@ unconfirmed (headless dummy renderer doesn't truly composite tweens). The toast 
 on a real device, and that 0.95s hold is long enough to read mid-chaos. The `▣ N/6 GUNS` header
 only ever shows at exactly 6/6 today (MAX_GUNS=6); if MAX_GUNS changes it auto-tracks. Tune toast
 font/hold/haptic-ms to taste.
+
+## 2026-06-20 — iter 18 (build): near-miss feedback — tiered "thread the needle" payoff
+
+**Mode:** build (iter 18, not a ×4 audit; iter 20 is the next scorecard). Picked the JUICE &
+FEEDBACK "Near-miss feedback" item — highest-leverage *safe* pick. The near-miss IS the greed/
+risk core that iters 9–10 built (greed meter + flow-state), and VISION pillars #1 (Speed you can
+feel) and #5 (risk/reward greed) hinge on threading traffic *feeling* dangerous and rewarding.
+Skipped the two riskier/bigger NOW items: object pooling (flagged high-regression-risk, wants
+human oversight) and daily-missions (large multi-file front-end feature — better as its own focused
+iteration). This is one cohesive, finishable, juicy increment.
+
+**Problem:** every near-miss fired the *same* reaction (fixed trauma/flash/haptic + one generic
+"NEAR MISS!" popup + a tiny hit_stop) regardless of how close the pass actually was. A hair's-
+breadth graze and a lazy 2 m near-miss were indistinguishable — the single biggest moment-to-moment
+thrill in the game was flat.
+
+**What shipped — closeness-tiered payoff.** `CarController` now computes a **closeness** (0..1,
+1 = touching) from the lateral gap vs `NEAR_MISS_DIST` (2.2 m) and passes it through. The
+`ProgressionManager.near_miss` signal now carries `closeness: float`. Every consumer scales by it:
+- **Points** (`GameManager._on_near_miss`): base near-miss points `+0..100%` by closeness, all
+  combo-scaled — greedy tight passes are worth the risk. DDA bias gain also scales (a closer pass
+  is a louder skill flex).
+- **Slow-mo flirt** (`Main._on_near_miss`): a true graze (closeness ≥ `NEAR_MISS_GRAZE` = 0.62)
+  earns `Juice.hit_stop(0.16, 0.5)` — the signature "time slows as you thread the needle" beat.
+  hit_stop self-guards (`prev < 0.9` bails) against the crash sequence AND against re-triggering,
+  so rapid grazes can't stack into a stutter. Lazy passes keep the tiny 0.05/0.4 tap.
+  trauma/flash/haptic all lerp with closeness.
+- **Tiered popup** (`HUD._on_near_miss`): "NEAR MISS!" (cyan, 40) → "SO CLOSE!" (warm, 48) →
+  "THREADED IT!" (hot-orange, 58).
+- **Speed-line flare** (`HUD`): a transient `_nearmiss_spike` (0.25–0.65 by closeness) added on
+  top of the steady speed-driven `speed_intensity` shader uniform, decaying ~2.6/s — the streaks
+  whoosh as you pass. Reset in `HUD.reset()`.
+
+**Files:** `scenes/car/CarController.gd`, `scripts/autoload/ProgressionManager.gd`,
+`scripts/autoload/GameManager.gd`, `scenes/main/Main.gd`, `scenes/ui/HUD.gd`. No autoload-order or
+.tscn changes; signal arg has a default so any stray unparameterized connect would still bind.
+
+**Verified (per CLAUDE.md):** clean headless boot, no `error|script|parse|invalid|shader`.
+Exercised the full chain windowed via the `Main._ready` swap (`_nmtest`) at closeness
+0.2/0.55/0.85/0.95: combo climbed 1→5; points scaled by closeness×combo (Δ 60/117/184/245);
+DDA bias rose with closeness; grazes (≥0.62) showed `time_scale 0.5` (the 0.16 s flirt) while the
+two lazy passes showed `0.4` (the small tap), and everything restored to `1.0` with zero
+script errors / nil / invalid. Swap restored from `/tmp/Main.gd.bak` (grep: `_nmtest` gone,
+`_front_end.begin()` back) + re-ran a clean headless boot (no matches).
+
+**Unverified / for human playtest:** all GPU/feel. The 0.62 graze threshold — does the slow-mo
+flirt fire often enough to feel like a reward without interrupting flow on a busy lane (rapid
+grazes are coalesced by hit_stop's self-guard, but the *first* of a burst still dips)? The
+0.16 s / 0.5-scale flirt depth, the popup tier wording/colors, and the speed-line flare
+brightness vs the steady streaks. Tune `NEAR_MISS_GRAZE` (Main), the hit_stop args, and the
+`_nearmiss_spike` magnitude/decay (HUD).

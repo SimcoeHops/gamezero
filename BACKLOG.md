@@ -98,8 +98,8 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 ## JUICE & FEEDBACK (every action earns a reaction)
 - [x] Coin/pickup juice — DONE iter 13 (see Done): always-on grab magnet, rising-pitch
       "coin-run" streak chime, sparkle burst, streak-heated HUD "+1" floater.
-- [ ] Near-miss feedback: doppler whoosh, brief slow-mo flirt at very close passes, score
-      popup, screen-edge speed-line spike.
+- [x] Near-miss feedback — DONE iter 18 (see Done): tiered by closeness (graze earns slow-mo
+      flirt + hotter/bigger "THREADED IT!" popup + speed-line flare + bonus points).
 - [ ] Gun feel: muzzle flash, light kick, impact sparks + small hit-stop on crumple, tracer
       glow, per-gun distinct sound. Big guns should *thump*.
 - [ ] Milestone stingers: distance/combo milestones trigger a musical stinger + UI flourish.
@@ -158,6 +158,34 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Near-miss feedback — tiered "thread the needle" payoff** (2026-06-20, iter 18) — the
+      greed/risk core (VISION pillars #1 Speed-you-can-feel + #5 risk-reward) fired the *same*
+      reaction for every near-miss regardless of how close. Now the pass's **closeness** (0..1,
+      computed from the lateral gap vs `NEAR_MISS_DIST` in `CarController`) drives a tiered payoff
+      so a hair's-breadth graze hits far harder than a lazy near-miss: (1) **bonus points** —
+      `+0..100%` of base near-miss points by closeness, combo-scaled, so greedy tight passes pay;
+      (2) **slow-mo flirt** — a true graze (closeness ≥ 0.62) triggers `Juice.hit_stop(0.16, 0.5)`,
+      the signature "time slows as you thread the needle" beat (self-guarded against the crash
+      sequence + re-triggering, so rapid grazes can't stutter); lazy passes keep the tiny 0.05/0.4
+      tap; (3) **tiered popup** — "NEAR MISS!" (cyan) → "SO CLOSE!" (warm) → "THREADED IT!"
+      (hot-orange, font 58); (4) **speed-line flare** — a transient `_nearmiss_spike` added on top
+      of the steady speed-driven `speed_intensity` shader uniform, decaying ~2.6/s, so the streaks
+      whoosh as you pass; (5) trauma/flash/haptic/DDA all scale with closeness. Signal
+      `ProgressionManager.near_miss` now carries `closeness: float`. Files: `CarController.gd`
+      (compute + pass closeness), `ProgressionManager.gd` (signal + `register_near_miss(closeness)`),
+      `GameManager.gd` (`_on_near_miss` bonus + scaled DDA), `Main.gd` (`_on_near_miss` scaled
+      reaction + graze flirt, `NEAR_MISS_GRAZE` const), `HUD.gd` (`_on_near_miss` tiered popup +
+      `_nearmiss_spike` flare + reset). Verified (per CLAUDE.md): clean headless boot, no
+      `error|script|parse|invalid|shader`. Exercised the full chain windowed via the `Main._ready`
+      swap at closeness 0.2/0.55/0.85/0.95: combo climbed 1→5, points scaled by closeness×combo
+      (60/117/184/245), DDA bias rose with closeness, grazes (≥0.62) showed `time_scale 0.5` (flirt)
+      vs `0.4` (tap), all restored to 1.0, zero errors. Swap restored from `/tmp/Main.gd.bak` +
+      re-verified clean.
+      - [ ] Human playtest (feel unverified): the 0.62 graze threshold (`NEAR_MISS_GRAZE` in Main) —
+            does the slow-mo flirt fire often enough to feel rewarding without interrupting flow on a
+            busy lane? The 0.16 s / 0.5 scale flirt depth (too floaty? too subtle?), the popup tier
+            wording/colors, and the speed-line flare brightness. Tune `NEAR_MISS_GRAZE`, the hit_stop
+            args in `Main._on_near_miss`, and the `_nearmiss_spike` magnitude/decay in HUD.
 - [x] **Gun slot-cap feedback cue** (2026-06-20, iter 17) — made the (good but invisible) iter-16
       slot cap legible. New `GunManager.gun_redirected(target_id, new_level)` signal fires whenever an
       over-cap NEW pickup is redirected into deepening the lowest-level owned gun. HUD reacts: a

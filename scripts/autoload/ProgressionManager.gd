@@ -21,7 +21,8 @@ signal dodge_registered(total: int)
 signal milestone_reached(dodge_count: int)
 
 ## Emitted when a car is dodged at very close range (juice + combo bonus).
-signal near_miss()
+## [param closeness] is 0..1 — how close the pass was (1 = a hair's-breadth graze).
+signal near_miss(closeness: float)
 
 ## Maps dodge-count thresholds to ability StringNames.
 const MILESTONES: Dictionary = {
@@ -51,8 +52,8 @@ func register_dodge() -> void:
 
 
 ## Called by [CarController] when a car is dodged at close range.
-func register_near_miss() -> void:
-	near_miss.emit()
+func register_near_miss(closeness: float = 0.5) -> void:
+	near_miss.emit(closeness)
 
 
 ## Resets all progression state for a new run.

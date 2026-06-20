@@ -206,14 +206,25 @@ func _on_unlock(_ability_name: StringName) -> void:
 	Juice.haptic(40)
 
 
-func _on_near_miss() -> void:
+## How close a pass must be (closeness 0..1) to earn the slow-mo "flirt".
+const NEAR_MISS_GRAZE := 0.62
+
+func _on_near_miss(closeness: float = 0.5) -> void:
 	# GameManager's near-miss handler runs first (autoload connects before the scene),
 	# so combo is already incremented — the whoosh pitch rises with the streak.
 	AudioManager.play_nearmiss(GameManager.combo)
-	Juice.add_trauma(0.14)
-	Juice.flash(Color(0.6, 0.95, 1.0), 0.07, 0.18)
-	Juice.haptic(12)
-	Juice.hit_stop(0.05, 0.4)
+	# Every layer scales with how close the pass was, so a hair's-breadth thread hits
+	# noticeably harder than a lazy near-miss.
+	Juice.add_trauma(0.10 + 0.10 * closeness)
+	Juice.flash(Color(0.6, 0.95, 1.0), 0.05 + 0.06 * closeness, 0.15 + 0.08 * closeness)
+	Juice.haptic(int(round(8 + 12 * closeness)))
+	if closeness >= NEAR_MISS_GRAZE:
+		# A true graze flirts with slow-mo for a beat — the signature "time slows as you
+		# thread the needle" thrill. hit_stop self-guards against the crash sequence and
+		# against re-triggering, so rapid grazes can't stack into a stutter.
+		Juice.hit_stop(0.16, 0.5)
+	else:
+		Juice.hit_stop(0.05, 0.4)
 
 
 ## Paid continue: clear the danger and revive the player.

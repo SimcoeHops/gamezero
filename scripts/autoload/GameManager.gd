@@ -389,13 +389,16 @@ func level_progress() -> float:
 	return clampf(float(level_xp) / float(maxi(level_xp_needed, 1)), 0.0, 1.0)
 
 
-func _on_near_miss() -> void:
+func _on_near_miss(closeness: float = 0.5) -> void:
 	combo = mini(combo + 1, MAX_COMBO)
 	_combo_timer = COMBO_WINDOW
 	combo_changed.emit(combo)
-	add_points(NEAR_MISS_POINTS)
-	# A near-miss is a deliberate skill flex — press the difficulty a touch harder.
-	difficulty_bias = minf(difficulty_bias + DDA_NEARMISS_GAIN, 1.0)
+	# Threading the needle pays: base near-miss points plus up to +100% for a true
+	# graze (both combo-scaled in add_points), so greedy tight passes are worth the risk.
+	add_points(NEAR_MISS_POINTS + int(round(NEAR_MISS_POINTS * closeness)))
+	# A near-miss is a deliberate skill flex — press the difficulty a touch harder,
+	# and a closer pass is a louder flex.
+	difficulty_bias = minf(difficulty_bias + DDA_NEARMISS_GAIN * (0.6 + 0.8 * closeness), 1.0)
 
 
 ## Snuffs the flow-state heat — called the instant the player crashes so the world
