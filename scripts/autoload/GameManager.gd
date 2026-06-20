@@ -57,6 +57,20 @@ var score: int = 0
 ## All-time best score, persisted to disk.
 var high_score: int = 0
 
+## The high score as it stood at the START of the run that just ended — captured
+## in [method end_game] before [member high_score] is overwritten, so the recap
+## can show "previous best" and reliably know whether this run beat it.
+var prev_high_score: int = 0
+
+## All-time furthest distance (metres), persisted — a second personal best to chase.
+var best_distance: float = 0.0
+var prev_best_distance: float = 0.0
+
+## Whether the run that just ended set a new best score / distance. Read by the
+## game-over recap to fire the celebration. Set in [method end_game].
+var last_run_best_score: bool = false
+var last_run_best_distance: bool = false
+
 ## Persistent soft currency (earned from score each run).
 var coins: int = 0
 ## Coins earned in the most recent run (for the game-over readout).
@@ -152,10 +166,19 @@ func end_game() -> void:
 	last_coins_earned = maxi(int(score / 10.0), 0)
 	coins += last_coins_earned
 
-	if score > high_score:
+	# Capture the bests as they stood BEFORE this run so the recap can celebrate
+	# (and show the previous mark) without racing the overwrite below.
+	prev_high_score = high_score
+	prev_best_distance = best_distance
+	last_run_best_score = score > high_score and score > 0
+	last_run_best_distance = run_distance > best_distance and run_distance > 1.0
+
+	if last_run_best_score:
 		high_score = score
 		new_high_score.emit(high_score)
 		print("[GameManager] New high score: ", high_score)
+	if last_run_best_distance:
+		best_distance = run_distance
 
 	_save_progress()
 	print("[GameManager] Game over — Score: ", score, " | Coins +", last_coins_earned, " | Time: %.1f" % time_elapsed, "s")
@@ -262,10 +285,12 @@ func _on_near_miss() -> void:
 func _load_high_score() -> void:
 	if _config.load(SAVE_PATH) == OK:
 		high_score = _config.get_value("score", "high", 0)
+		best_distance = _config.get_value("score", "best_distance", 0.0)
 		coins = _config.get_value("meta", "coins", 0)
 
 
 func _save_progress() -> void:
 	_config.set_value("score", "high", high_score)
+	_config.set_value("score", "best_distance", best_distance)
 	_config.set_value("meta", "coins", coins)
 	_config.save(SAVE_PATH)

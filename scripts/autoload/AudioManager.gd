@@ -243,6 +243,31 @@ func play_ui() -> void:
 	_play(_ui, 0.95, 1.1, -4.0)
 
 
+## A short rising blip for animated count-ups on the recap. [param t] (0..1) walks
+## the pitch up so a ticking number sounds like it's climbing.
+func play_count_tick(t: float = 0.0) -> void:
+	var pitch := lerpf(1.1, 2.1, clampf(t, 0.0, 1.0))
+	_play(_pickup, pitch, pitch + 0.06, -12.0)
+
+
+## A triumphant rising arpeggio for a NEW BEST. Fires four ascending notes from
+## the unlock/pickup banks with small real-time delays — a little fanfare.
+func play_fanfare() -> void:
+	var bank := _unlock if not _unlock.is_empty() else _pickup
+	if bank.is_empty():
+		return
+	var pitches := [1.0, 1.26, 1.5, 2.0]  # root, third, fifth, octave
+	for i in pitches.size():
+		var pitch: float = pitches[i]
+		var delay := i * 0.11
+		if delay <= 0.0:
+			_play(bank, pitch, pitch + 0.02, -1.0)
+		else:
+			get_tree().create_timer(delay, true, false, true).timeout.connect(
+				func() -> void: _play(bank, pitch, pitch + 0.02, -1.0)
+			)
+
+
 # ---------------------------------------------------------------- engine drone
 
 func _setup_engine() -> void:

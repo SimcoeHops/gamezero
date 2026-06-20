@@ -10,7 +10,32 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## NOW — highest leverage (do these first)
 
-<!-- (empty — next build iteration: pull from the sections below, or run a deep audit) -->
+<!-- Refilled by the 2026-06-19 deep audit (iter 4). Lowest rubric scores were
+     #6 Progression & retention (2) and #10 Accessibility (2); #5 Audio (3) close
+     behind. These attack those. See JOURNAL scorecard. -->
+
+- [ ] **Meta-progression coin shop** (Progression #6 — the biggest retention hole):
+      persistent `coins` currently only buy mid-run continues. Add a SHOP reachable from
+      the front-end that spends coins on PERMANENT upgrades that apply at `start_game`
+      (e.g. starting gun, +1 air-jump, always-on coin magnet, +1 free revive, score/coin
+      multiplier). Persist owned upgrades in the existing ConfigFile; apply them in
+      `GameManager.start_game`/relevant autoloads. Keep the UI simple Buttons (no custom
+      `_draw`) so it's headless-verifiable via the apply-logic path. This is the #1
+      "why grind coins" lever.
+- [ ] **Daily challenge + missions/goals** (Progression #6): 3 rotating goals
+      ("near-miss 20 cars", "reach Neon", "own 4 guns at once") with a coin reward + a
+      visible streak counter. Seed the daily from the date so it's deterministic. Surface
+      on the front-end and tick progress live on the HUD. Strongest runner retention driver.
+- [ ] **Per-gun distinct fire SFX** (Audio #5 — quick, high-impact win): every gun
+      currently calls `AudioManager.play_laser`, so the build-a-loadout power fantasy
+      sounds identical no matter what you stack. Give each `Pattern` its own voice
+      (pistol pop, shotgun boom, minigun hose, mortar thunk+boom, railgun crack, laser
+      zap). Pitch/volume per pattern; route through `_play`. Big guns should *thump*.
+- [ ] **Accessibility & options screen** (Accessibility #10 — cheap, expected at this bar):
+      add a SETTINGS panel (front-end + pause) with screen-shake intensity (0–100%, scales
+      `Juice.add_trauma`/`kick_fov`), a haptics on/off toggle, and a reduce-flashes toggle
+      (dampens `Juice.flash`/impact pulse). Persist in `Settings`. Have `Juice` read a
+      `shake_scale`/`haptics_on`/`flash_scale` so one knob governs all callers.
 
 - [ ] **Gantry polish v2** (follow-up to the shipped gantries): per-biome sign *text/icons*
       (e.g. a billboarded WORD like the powerup gates) instead of a blank lit panel; rarer
@@ -98,6 +123,23 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Game-over recap: "NEW BEST!" celebration + animated count-ups** (2026-06-19, iter 4
+      audit ship) — the recap was static text with a fragile pulsing "NEW RECORD" label.
+      Now: the hero SCORE counts up from 0 with a rising-pitch blip (`AudioManager.
+      play_count_tick`), supporting stats (dodges · **distance** · time) punch in under it,
+      and the BEST line shows both best score **and** best distance. On a personal best a
+      "★ NEW BEST ★" (or "✦ FURTHEST RUN ✦" for distance-only) banner punches in with an
+      ELASTIC tween, a multi-color **confetti burst** (5 one-shot `CPUParticles2D`), a
+      rising 4-note **fanfare** (`AudioManager.play_fanfare`), a gold/cyan screen flash +
+      haptic, then settles into a gentle pulse; restart unlocks only AFTER the payoff so a
+      reflexive tap can't skip it. Added persistent **best_distance** + clean pre-overwrite
+      record detection (`prev_high_score`, `last_run_best_score/_distance`) in GameManager
+      (saved under `score/best_distance`). Files: `GameManager.gd`, `AudioManager.gd`,
+      `GameOverScreen.gd`. Verified: clean headless boot; exercised BOTH the new-best and
+      not-a-record paths windowed via the `Main._ready` swap (count-ups, confetti, fanfare,
+      banner all ran error-free over 260 frames), swap restored + re-verified clean.
+      - [ ] Human playtest: confetti density/scale & spread, count-up duration feel, banner
+            ELASTIC overshoot, fanfare pitch/loudness vs music duck. Unverified visually.
 - [x] **Overhead gantries** (2026-06-19) — punctuate biomes & sell speed. The named asset
       (`kenney_3d-road-tiles`) turned out to be a top-down *terrain* kit, not tunnels, so
       gantries were built **procedurally**: `scenes/highway/Gantry.gd` (pillars + cross-beam +

@@ -5,6 +5,70 @@ and anything the human should review or decide. Newest at the bottom.
 
 ---
 
+## 2026-06-19 — Deep audit (iter 4) + game-over "NEW BEST" celebration
+
+**Mode:** Deep-audit (iteration 4 = multiple of 4). Booted clean headless; read the core
+scripts critically (PlayerController, GameManager, GunManager, Highway, CarSpawner, HUD,
+Coin/CoinSpawner, Juice, GameOverScreen, Settings, Main + Main.tscn env block).
+
+**Rubric scorecard (harsh critic, 1–5):**
+1. **Core fun & game loop — 3.** Solid VS-style stacking guns + level-up choice + dodge/
+   combo + biomes + continues. But thin reasons to *return*: no shop, missions, or PB chase.
+2. **Game feel / responsiveness — 3.** Direct-touch positioning + eased keyboard steering,
+   variable jump, lean/flair, speed-FOV all good. Missing: jump input-buffering, coyote time.
+3. **Juice & feedback — 4.** Crash sequence, level-up, near-miss, gantry, star FX are strong.
+   Gap: **coin pickup** is near-silent (trauma 0.04 + a blip; no pop/sparkle/count).
+4. **Visual polish & art direction — 3.** Real post stack exists (ACES tonemap, glow, grade,
+   fog) + per-biome fog/ambient/sun. But no per-biome skybox, env particles, weather, or
+   player rim-light; still reads a bit asset-flip up close.
+5. **Audio — 3.** Playlist + drone + pooled pitched SFX. But **every gun reuses play_laser**
+   (kills the loadout fantasy), no adaptive-music layers, no milestone stingers.
+6. **Progression & retention — 2 (LOWEST).** `coins` persist but ONLY buy continues. No shop,
+   no daily/missions, no leaderboard beyond a single high score, skins ungated. The #1
+   runner-retention surface is essentially absent.
+7. **Onboarding & UX — 3.** Front-end portrait cards are nice; no tutorial; recap was static.
+8. **Difficulty & balance — 3.** Sensible ramp, always-dodgeable gap, traffic eases at speed.
+   Gun balance unvalidated.
+9. **Performance & stability — 3.** Clean, no errors, but **no pooling** (cars/coins/
+   projectiles/particles all instantiate+free) — worst-case carnage unmeasured.
+10. **Accessibility & options — 2 (LOWEST).** Only volume + skin. No shake/haptics/flash
+    toggles, no colorblind, no in-UI remap.
+
+**Lowest: #6 Progression (2) and #10 Accessibility (2); #5 Audio (3) close behind.** Refilled
+BACKLOG "NOW" with 4 scoped items attacking these: meta-coin-shop, daily/missions, per-gun
+SFX, and an accessibility/options screen.
+
+**Shipped this iteration (the best fully-completable + verifiable one):** a real game-over
+recap — attacks #6 (PB chase) + #7. The old recap was static text + a fragile pulsing label.
+Now the hero SCORE counts up from 0 with a rising-pitch blip; supporting stats (dodges ·
+**distance** · time) punch in; the BEST line shows best score **and** a new persistent best
+**distance**. On a personal best: a "★ NEW BEST ★" / "✦ FURTHEST RUN ✦" banner punches in
+(ELASTIC), a 5-emitter multi-color **confetti burst**, a rising 4-note **fanfare**, a flash +
+haptic, then a gentle pulse; restart arms only after the payoff. Added `best_distance`
+persistence + clean pre-overwrite record detection (`prev_high_score`, `last_run_best_score/
+_distance`) so detection no longer relies on the already-overwritten high score.
+
+**Files touched:** `scripts/autoload/GameManager.gd` (best_distance + record flags + save),
+`scripts/autoload/AudioManager.gd` (`play_count_tick`, `play_fanfare`),
+`scenes/ui/GameOverScreen.gd` (confetti, count-up + celebration sequence), `BACKLOG.md`,
+`tools/overnight/JOURNAL.md`.
+
+**Verified (per CLAUDE.md):** Clean headless boot (no `error|script|parse|invalid|shader`).
+Exercised the recap **windowed** (real renderer for tweens/CPUParticles2D) via the documented
+`Main._ready` swap: forced `start_game` then a 0.6s-delayed test that set run stats and called
+`end_game`. Ran BOTH branches — new-best (`last_run_best_score=true best_distance=true`,
+fanfare + confetti) and not-a-record (`false/false`, soft drain) — each over 260 frames with
+zero errors. Restored `Main.gd` from `/tmp/Main.gd.bak`, confirmed the test fn is gone, re-ran
+a clean headless boot.
+
+**Unverified / risk — human should playtest:** no GPU/visual confirmation of the *look*.
+Check confetti density/scale (5×22 one-shot particles, negligible but unseen), count-up
+duration (scales 0.45–1.1s with score), the banner's ELASTIC overshoot, and fanfare loudness
+vs the music duck. `best_distance` adds a new key to `user://highscore.cfg` (back-compatible —
+defaults to 0). The "✦ FURTHEST RUN ✦" path only shows when distance is a best but score isn't.
+
+---
+
 ## 2026-06-19 — Overhead gantries (Build mode)
 
 **What & why:** Shipped the top NOW item — overhead structures that punctuate the biomes and
