@@ -182,9 +182,21 @@ func _play(bank: Array[AudioStream], pitch_min: float, pitch_max: float, vol_db:
 
 
 func play_crash() -> void:
-	_play(_crash, 0.8, 1.05, 2.0)
-	# Layer a second hit for body.
-	_play(_crash, 0.55, 0.7, -2.0)
+	# Layered impact: heavy metal crush + impact crack + a pitched-down sub-boom
+	# for low-end body + glass shatter on top.
+	_play(_smash, 0.7, 0.9, 3.0)
+	_play(_crash, 0.85, 1.05, 2.0)
+	_play(_crash, 0.5, 0.62, 0.0)
+	if not _glass.is_empty():
+		_play(_glass, 1.0, 1.3, -2.0)
+	# Delayed tumble crunch as the ragdoll hits the ground.
+	get_tree().create_timer(0.34).timeout.connect(_play_crash_tumble)
+
+
+func _play_crash_tumble() -> void:
+	_play(_smash, 0.9, 1.2, -6.0)
+	if not _glass.is_empty():
+		_play(_glass, 1.4, 1.8, -11.0)
 
 
 ## A satisfying car-destruction crunch: metal body hit + glass shatter layer.

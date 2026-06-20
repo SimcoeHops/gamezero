@@ -12,6 +12,10 @@ var _fov_kick: float = 0.0
 var _shake_offset: Vector3 = Vector3.ZERO
 var _shake_roll: float = 0.0
 
+## Crash impact pulse (1.0 at impact, decays to 0). Read by the HUD each frame
+## to drive the screen_fx shockwave/chromatic overlay.
+var _impact: float = 0.0
+
 var _noise := FastNoiseLite.new()
 var _t: float = 0.0
 
@@ -21,6 +25,7 @@ const TRAUMA_DECAY := 1.8
 const MAX_OFFSET := 0.7
 const MAX_ROLL := 0.10
 const FOV_DECAY := 7.0
+const IMPACT_DECAY := 1.1
 
 
 func _ready() -> void:
@@ -37,6 +42,7 @@ func _process(delta: float) -> void:
 
 	_trauma = maxf(_trauma - TRAUMA_DECAY * rt, 0.0)
 	_fov_kick = lerpf(_fov_kick, 0.0, clampf(rt * FOV_DECAY, 0.0, 1.0))
+	_impact = maxf(_impact - IMPACT_DECAY * rt, 0.0)
 
 	var amt := _trauma * _trauma
 	var s := _t * 28.0
@@ -68,6 +74,15 @@ func shake_roll() -> float:
 
 func fov_kick() -> float:
 	return _fov_kick
+
+
+## Triggers the crash impact overlay (shockwave + chromatic fringe). 1.0 = full.
+func impact(amount: float = 1.0) -> void:
+	_impact = maxf(_impact, clampf(amount, 0.0, 1.0))
+
+
+func impact_pulse() -> float:
+	return _impact
 
 
 ## Briefly freezes time for impact weight, then restores the previous scale.

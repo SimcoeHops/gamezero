@@ -90,11 +90,24 @@ func _process(delta: float) -> void:
 # --------------------------------------------------------------- event feel
 
 func _on_player_crashed(_impact_velocity: Vector3) -> void:
-	Juice.add_trauma(1.0)
-	Juice.kick_fov(20.0)
-	Juice.flash(Color(1, 1, 1), 0.65, 0.45)
-	Juice.haptic(60)
+	Juice.add_trauma(1.25)
+	Juice.kick_fov(28.0)
+	Juice.impact(1.0)
+	# Sharp white pop, then a warm afterglow during the slow-mo.
+	Juice.flash(Color(1, 1, 1), 0.85, 0.18)
+	get_tree().create_timer(0.06, true, false, true).timeout.connect(
+		func() -> void: Juice.flash(Color(1.0, 0.55, 0.3), 0.32, 0.6)
+	)
+	Juice.haptic(80)
 	AudioManager.play_crash()
+	# Secondary "thud" + shake when the ragdoll slams the ground.
+	get_tree().create_timer(0.36, true, false, true).timeout.connect(_on_crash_landing)
+
+
+func _on_crash_landing() -> void:
+	Juice.add_trauma(0.5)
+	Juice.kick_fov(10.0)
+	Juice.haptic(35)
 
 
 func _on_ability_activated(ability_name: StringName) -> void:

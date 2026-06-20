@@ -133,6 +133,7 @@ func _process(delta: float) -> void:
 		if _fx_mat:
 			var t := clampf((GameManager.highway_speed - 25.0) / 60.0, 0.0, 1.0)
 			_fx_mat.set_shader_parameter("speed_intensity", t)
+			_fx_mat.set_shader_parameter("impact_pulse", Juice.impact_pulse())
 		# Refresh every frame so the per-power-up countdowns tick and the
 		# about-to-expire warning blinks.
 		_refresh_powerups()

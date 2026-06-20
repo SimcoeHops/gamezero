@@ -614,31 +614,57 @@ func activate_ragdoll(impact_velocity: Vector3) -> void:
 	print("[Player] CRASH! Impact velocity: ", impact_velocity)
 	_transition_to(State.RAGDOLL)
 
-	# Restore time scale if in bullet time (and cancel any recovery ramp).
+	# Cancel any in-progress bullet-time recovery ramp.
 	_bt_ramping = false
-	Engine.time_scale = 1.0
 
-	# Dramatic slow-motion on hit
-	Engine.time_scale = 0.15
+	# Hard hit-stop: a single frozen beat for maximum impact weight. The real
+	# slow-mo and whip-back are choreographed on a wall-clock timeline below so
+	# they read identically no matter what time_scale we crashed out of.
+	Engine.time_scale = 0.001
 
 	# Hide the animated mesh
 	if _mesh:
 		_mesh.visible = false
 
-	# Burst the player into physics gibs — the satisfying payoff of the run.
+	# Burst the player into physics gibs + glass/spark debris — the payoff.
 	var skeleton := get_node_or_null("RagdollSkeleton")
 	if skeleton and skeleton.has_method("activate"):
 		skeleton.activate(impact_velocity, global_position + Vector3(0, 0.9, 0))
 
 	crashed.emit(impact_velocity)
+	_run_crash_time_sequence()
 
-	# Restore time scale after dramatic pause
+
+## Choreographs the crash time-dilation on a real-time (unscaled) timeline:
+## a brief frozen hit-stop, a held slow-mo to savour the ragdoll, then a fast
+## "whip" back up to speed before the recap. Guards against the run resetting
+## or the player reviving mid-sequence.
+func _run_crash_time_sequence() -> void:
+	var tree := get_tree()
+	# Frozen hit-stop.
+	await tree.create_timer(0.07, true, false, true).timeout
+	if current_state != State.RAGDOLL:
+		return
+	# Drop into dramatic slow-mo and hold it.
+	Engine.time_scale = 0.12
+	await tree.create_timer(0.42, true, false, true).timeout
+	if current_state != State.RAGDOLL:
+		return
+	# Whip back to full speed (real-time so it ignores its own slow-mo).
 	var tween := create_tween()
-	tween.set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
-	tween.tween_interval(0.3)  # Hold slow-mo for 0.3 real seconds
-	tween.tween_property(Engine, "time_scale", 1.0, 0.2)
-	tween.tween_interval(1.5)  # Let ragdoll fly for 1.5s
-	tween.tween_callback(_on_ragdoll_settled)
+	tween.set_ignore_time_scale(true)
+	tween.set_ease(Tween.EASE_IN)
+	tween.set_trans(Tween.TRANS_CUBIC)
+	tween.tween_method(_set_time_scale, 0.12, 1.0, 0.22)
+	# Let the ragdoll fly and settle before the recap.
+	await tree.create_timer(1.5, true, false, true).timeout
+	if current_state != State.RAGDOLL:
+		return
+	_on_ragdoll_settled()
+
+
+func _set_time_scale(v: float) -> void:
+	Engine.time_scale = v
 
 
 ## Called after the ragdoll spectacle to transition to DEAD and offer a continue

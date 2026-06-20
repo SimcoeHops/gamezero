@@ -10,10 +10,6 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## NOW — highest leverage (do these first)
 
-- [ ] **Crash sequence, taken to "wow".** Crashing is the signature spectacle (pillar #2).
-      Layer it: brief hit-stop → slow-mo → camera punch + heavy shake → debris/glass particles
-      → screen flash + chromatic aberration → crunch SFX stack → haptic. Then a satisfying
-      ragdoll beat before the recap. Make players *want* to watch themselves die.
 - [ ] **Overhead tunnels / gantries** using `assets/kenney_3d-road-tiles/` (now present;
       CLAUDE.md wrongly says it's missing). Cosmetic first, ride the hills/curve like cars.
       Use them to punctuate biomes and sell speed (whoosh + shadow sweep as you pass under).
@@ -100,6 +96,21 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Crash sequence, taken to "wow"** (2026-06-19) — layered the signature crash: hard
+      hit-stop (time_scale 0.001) → held slow-mo (0.12) → cubic "whip" back to speed, all on a
+      real-time timeline (`PlayerController._run_crash_time_sequence`). Added a glass/metal shard
+      + spark `GPUParticles3D` burst at impact (`PlayerRagdoll._spawn_debris`), a screen_fx
+      shockwave-ring + chromatic edge-fringe overlay (new `impact_pulse` uniform driven by
+      `Juice.impact()`/`impact_pulse()` via the HUD), a layered crunch SFX stack + delayed
+      tumble crunch (`AudioManager.play_crash`/`_play_crash_tumble`), and a double flash
+      (white pop → warm afterglow) + secondary landing thud/shake/haptic in `Main`.
+      Follow-ups below.
+      - [ ] Tune debris counts/perf on-device — 40 shards + 28 sparks per crash is fine on
+            desktop but unverified on mobile GPU; consider pooling if crashes feel heavy.
+      - [ ] Consider a brief slow-mo "hero" camera dolly/zoom toward the ragdoll instead of
+            only shake (camera intentionality item in GAME FEEL).
+      - [ ] Glass shards currently a generic blue tint; could tint to the player's skin/biome
+            palette for cohesion.
 - [x] **Level-up "choose your gun" moment** (2026-06-19) — dodges are now XP (GameManager
       `run_level`/`level_up`); filling the bar freezes the run (tree pause) and shows 3 themed
       gun cards (`scenes/ui/LevelUpScreen.gd`). Pick grants/levels the gun via `add_gun`.
