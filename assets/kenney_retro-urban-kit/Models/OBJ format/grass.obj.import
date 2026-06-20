@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://pcu1ydqie0ot"
+path="res://.godot/imported/grass.obj-30650d6cd1701426c643922c5b87e7af.mesh"
+
+[deps]
+
+files=["res://.godot/imported/grass.obj-30650d6cd1701426c643922c5b87e7af.mesh"]
+
+source_file="res://assets/kenney_retro-urban-kit/Models/OBJ format/grass.obj"
+dest_files=["res://.godot/imported/grass.obj-30650d6cd1701426c643922c5b87e7af.mesh", "res://.godot/imported/grass.obj-30650d6cd1701426c643922c5b87e7af.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

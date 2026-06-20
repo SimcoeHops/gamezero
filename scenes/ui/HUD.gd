@@ -1,0 +1,518 @@
+## HUD — in-game heads-up display.
+##
+## Score (animated roll-up), speed, combo multiplier, ability-unlock icons,
+## milestone banners, active power-ups, floating near-miss popups, and the
+## full-screen speed-line / vignette overlay.
+
+extends Control
+
+## The root padding container the safe-area insets are applied to.
+@onready var _margin: MarginContainer = $MarginContainer
+@onready var _score_label: Label = $MarginContainer/TopBar/ScoreLabel
+@onready var _speed_label: Label = $MarginContainer/TopBar/SpeedLabel
+
+## Minimum padding (in viewport units) kept on every edge, even with no notch.
+const BASE_PADDING := 20
+@onready var _milestone_banner: Label = $MilestoneBanner
+@onready var _icon_jump: Control = $MarginContainer/AbilityBar/AbilityContainer/IconJump
+@onready var _icon_bullet_time: Control = $MarginContainer/AbilityBar/AbilityContainer/IconBulletTime
+@onready var _icon_weapon: Control = $MarginContainer/AbilityBar/AbilityContainer/IconWeapon
+
+var _ability_icons: Dictionary = {}
+
+# Runtime-created elements.
+var _powerup_rt: RichTextLabel = null
+var _last_powerup_count: int = 0
+var _combo_label: Label = null
+var _coin_label: Label = null
+var _fx_rect: ColorRect = null
+var _fx_mat: ShaderMaterial = null
+
+var _display_score: float = 0.0
+
+
+func _ready() -> void:
+	_ability_icons = {
+		&"jump": _icon_jump,
+		&"bullet_time": _icon_bullet_time,
+		&"weapon": _icon_weapon,
+	}
+	for icon in _ability_icons.values():
+		if icon:
+			icon.modulate = Color(0.3, 0.3, 0.3, 0.6)
+
+	GameManager.score_updated.connect(_on_score_updated)
+	GameManager.combo_changed.connect(_on_combo_changed)
+	GameManager.coins_changed.connect(_on_coins_changed)
+	GameManager.biome_changed.connect(_on_biome_changed)
+	ProgressionManager.ability_unlocked.connect(_on_ability_unlocked)
+	ProgressionManager.milestone_reached.connect(_on_milestone_reached)
+	ProgressionManager.near_miss.connect(_on_near_miss)
+	PowerUpManager.powerups_changed.connect(_update_powerups)
+	GunManager.guns_changed.connect(_update_powerups)
+	PowerUpManager.star_started.connect(_on_star_started)
+	PowerUpManager.star_ended.connect(_on_star_ended)
+	PowerUpManager.pickup_announced.connect(_on_pickup_announced)
+
+	if _milestone_banner:
+		_milestone_banner.visible = false
+	if _score_label:
+		_score_label.pivot_offset = _score_label.size * 0.5
+
+	# Keep the HUD clear of the iPhone notch / Dynamic Island / home indicator.
+	_apply_safe_area()
+	# Re-apply if the window resizes or the reported safe area changes (iOS often
+	# reports the real safe area a frame or two after launch / on rotation).
+	get_tree().get_root().size_changed.connect(_apply_safe_area)
+
+	_build_screen_fx()
+	_build_star_banner()
+	_build_powerup_label()
+	_build_combo_label()
+	_build_coin_label()
+	_update_powerups()
+	_update_speed_display()
+
+
+## Insets the root MarginContainer by the OS safe area so the HUD never sits
+## under the notch / Dynamic Island / home indicator. The safe area is reported
+## in real window pixels, while the HUD lives in the (stretched) 2D viewport, so
+## the pixel insets are converted to viewport units before being applied. We
+## inset all four edges — in landscape the notch/Dynamic Island sits on a *side*,
+## not just the top/bottom — and never go below the original 20px padding.
+func _apply_safe_area() -> void:
+	if _margin == null:
+		return
+
+	var safe := DisplayServer.get_display_safe_area()  # Rect2i, window/screen px
+	var win := DisplayServer.window_get_size()          # Vector2i, window px
+
+	# Per-edge insets in real window pixels (clamped to >= 0).
+	var left_px := maxi(safe.position.x, 0)
+	var top_px := maxi(safe.position.y, 0)
+	var right_px := maxi(win.x - (safe.position.x + safe.size.x), 0)
+	var bottom_px := maxi(win.y - (safe.position.y + safe.size.y), 0)
+
+	# Convert window px -> viewport units. With "canvas_items" stretch the 2D
+	# canvas can be a different size than the OS window, so scale by that ratio.
+	var vp := get_viewport().get_visible_rect().size
+	var sx := (vp.x / float(win.x)) if win.x > 0 else 1.0
+	var sy := (vp.y / float(win.y)) if win.y > 0 else 1.0
+
+	var ml := maxi(BASE_PADDING, int(round(left_px * sx)))
+	var mr := maxi(BASE_PADDING, int(round(right_px * sx)))
+	var mt := maxi(BASE_PADDING, int(round(top_px * sy)))
+	var mb := maxi(BASE_PADDING, int(round(bottom_px * sy)))
+
+	_margin.add_theme_constant_override("margin_left", ml)
+	_margin.add_theme_constant_override("margin_right", mr)
+	_margin.add_theme_constant_override("margin_top", mt)
+	_margin.add_theme_constant_override("margin_bottom", mb)
+
+
+func _process(delta: float) -> void:
+	# Animated score roll-up.
+	if _score_label:
+		var goal := float(GameManager.score)
+		if not is_equal_approx(_display_score, goal):
+			var rate := (absf(goal - _display_score) * 8.0 + 30.0) * delta
+			_display_score = move_toward(_display_score, goal, rate)
+			_score_label.text = str(int(round(_display_score)))
+
+	if GameManager.current_state == GameManager.GameState.PLAYING:
+		_update_speed_display()
+		if _fx_mat:
+			var t := clampf((GameManager.highway_speed - 25.0) / 60.0, 0.0, 1.0)
+			_fx_mat.set_shader_parameter("speed_intensity", t)
+		# Refresh every frame so the per-power-up countdowns tick and the
+		# about-to-expire warning blinks.
+		_refresh_powerups()
+		_update_star_banner()
+
+
+# --------------------------------------------------------------- score / speed
+
+func _on_score_updated(_score: int) -> void:
+	# Punch the score label on every gain.
+	if _score_label:
+		var tw := create_tween()
+		_score_label.scale = Vector2(1.18, 1.18)
+		tw.tween_property(_score_label, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _update_speed_display() -> void:
+	if _speed_label:
+		_speed_label.text = "%.0f km/h" % (GameManager.highway_speed * 3.6)
+
+
+# --------------------------------------------------------------- combo
+
+func _build_combo_label() -> void:
+	_combo_label = Label.new()
+	_combo_label.add_theme_font_size_override("font_size", 40)
+	_combo_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.15))
+	_combo_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_combo_label.anchor_left = 0.0
+	_combo_label.anchor_right = 1.0
+	_combo_label.anchor_top = 0.13
+	_combo_label.anchor_bottom = 0.13
+	_combo_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_combo_label.visible = false
+	add_child(_combo_label)
+
+
+func _on_combo_changed(combo: int) -> void:
+	if _combo_label == null:
+		return
+	if combo > 1:
+		_combo_label.text = "COMBO x%d" % combo
+		_combo_label.visible = true
+		_combo_label.pivot_offset = _combo_label.size * 0.5
+		var tw := create_tween()
+		_combo_label.scale = Vector2(1.4, 1.4)
+		tw.tween_property(_combo_label, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	else:
+		_combo_label.visible = false
+
+
+# --------------------------------------------------------------- popups
+
+func _on_near_miss() -> void:
+	_show_popup("NEAR MISS!", Color(0.6, 0.95, 1.0), 0.42)
+
+
+## Comic-book explosion words when the player stomps a car.
+const STOMP_WORDS := ["KABOOM!", "BAM!", "POW!", "SMASH!", "WHAM!", "BOOM!", "CRUNCH!", "KAPOW!"]
+
+func show_stomp_boom() -> void:
+	var word: String = STOMP_WORDS[randi() % STOMP_WORDS.size()]
+	var col := Color(1.0, 0.7, 0.15).lerp(Color(1.0, 0.3, 0.2), randf())
+	_show_popup(word, col, 0.4, 64)
+
+
+## Quick ~0.8s flash of the just-collected power-up's name across the BOTTOM of
+## the screen (clear of the road/action up top) — a second, easier-to-catch layer
+## of feedback when the gate's own label whips by too fast to read.
+func _on_pickup_announced(label_text: String, color: Color) -> void:
+	if label_text == "":
+		return
+	var l := Label.new()
+	l.text = label_text
+	l.add_theme_font_size_override("font_size", 42)
+	l.add_theme_color_override("font_color", color.lerp(Color.WHITE, 0.35))
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	l.add_theme_constant_override("shadow_offset_x", 2)
+	l.add_theme_constant_override("shadow_offset_y", 2)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# Pinned across the bottom edge, lifted clear of the home indicator.
+	l.anchor_left = 0.0
+	l.anchor_right = 1.0
+	l.anchor_top = 1.0
+	l.anchor_bottom = 1.0
+	l.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	l.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	l.offset_top = -108.0
+	l.offset_bottom = -56.0
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(l)
+
+	# Flash: snap in (with a little pop), hold, fade out — ~0.8s total.
+	l.modulate.a = 0.0
+	l.pivot_offset = l.size * 0.5
+	l.scale = Vector2(0.8, 0.8)
+	var tw := create_tween()
+	tw.tween_property(l, "modulate:a", 1.0, 0.12)
+	tw.parallel().tween_property(l, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.5)
+	tw.tween_property(l, "modulate:a", 0.0, 0.18)
+	tw.tween_callback(l.queue_free)
+
+
+func _show_popup(text: String, color: Color, y_frac: float, font_size: int = 40) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", font_size)
+	l.add_theme_color_override("font_color", color)
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.size = Vector2(440, 60)
+	l.pivot_offset = Vector2(220, 30)
+	var vp := get_viewport_rect().size
+	l.position = Vector2(vp.x * 0.5 - 220 + randf_range(-40, 40), vp.y * y_frac)
+	add_child(l)
+
+	var rise := create_tween()
+	rise.tween_property(l, "position:y", l.position.y - 90.0, 0.8).set_ease(Tween.EASE_OUT)
+	rise.parallel().tween_property(l, "modulate:a", 0.0, 0.8)
+	rise.tween_callback(l.queue_free)
+
+	var pop := create_tween()
+	l.scale = Vector2(0.6, 0.6)
+	pop.tween_property(l, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+# --------------------------------------------------------------- abilities
+
+func _on_ability_unlocked(ability_name: StringName) -> void:
+	var icon: Control = _ability_icons.get(ability_name)
+	if icon:
+		var tween := create_tween()
+		tween.set_ease(Tween.EASE_OUT)
+		tween.set_trans(Tween.TRANS_ELASTIC)
+		tween.tween_property(icon, "modulate", Color.WHITE, 0.5)
+		tween.parallel().tween_property(icon, "scale", Vector2(1.3, 1.3), 0.3)
+		tween.tween_property(icon, "scale", Vector2.ONE, 0.2)
+
+
+func _on_milestone_reached(dodge_count: int) -> void:
+	if not _milestone_banner:
+		return
+	var text := ""
+	match dodge_count:
+		10: text = "JUMP UNLOCKED!"
+		25: text = "BULLET TIME UNLOCKED!"
+		50: text = "WEAPON UNLOCKED!"
+		_: text = "MILESTONE: %d DODGES!" % dodge_count
+	_milestone_banner.text = text
+	_milestone_banner.visible = true
+
+	var tween := create_tween()
+	_milestone_banner.position.y = -60
+	_milestone_banner.modulate.a = 0.0
+	tween.tween_property(_milestone_banner, "position:y", 80.0, 0.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.parallel().tween_property(_milestone_banner, "modulate:a", 1.0, 0.3)
+	tween.tween_interval(1.5)
+	tween.tween_property(_milestone_banner, "modulate:a", 0.0, 0.5)
+	tween.tween_callback(func(): _milestone_banner.visible = false)
+
+
+# --------------------------------------------------------------- power-ups
+
+func _build_powerup_label() -> void:
+	# Vertical list pinned to the LEFT edge (was a single horizontal line that ran
+	# straight across the screen into the player's view of the road). Smaller text,
+	# one power-up per row, each with its own 30s countdown.
+	_powerup_rt = RichTextLabel.new()
+	_powerup_rt.bbcode_enabled = true
+	_powerup_rt.fit_content = true
+	_powerup_rt.scroll_active = false
+	_powerup_rt.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_powerup_rt.custom_minimum_size = Vector2(176, 0)
+	_powerup_rt.add_theme_font_size_override("normal_font_size", 21)
+	_powerup_rt.add_theme_color_override("default_color", Color(0.85, 0.97, 1.0))
+	# Rounded translucent panel so the active power-ups read clearly over the road.
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.04, 0.06, 0.10, 0.55)
+	sb.set_corner_radius_all(12)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	sb.content_margin_top = 9
+	sb.content_margin_bottom = 9
+	sb.border_color = Color(0.5, 0.85, 1.0, 0.45)
+	sb.set_border_width_all(2)
+	_powerup_rt.add_theme_stylebox_override("normal", sb)
+	_powerup_rt.position = Vector2(20, 104)
+	_powerup_rt.visible = false
+	add_child(_powerup_rt)
+
+
+## Signal handler — pops the panel when the set of power-ups changes.
+func _update_powerups() -> void:
+	_refresh_powerups()
+	var count := GunManager.owned.size() + (1 if PowerUpManager.speed_stacks > 0 else 0) \
+		+ (1 if PowerUpManager.is_invincible() else 0) + (1 if PowerUpManager.is_magnet_active() else 0)
+	if _powerup_rt and _powerup_rt.visible and count != _last_powerup_count:
+		_last_powerup_count = count
+		_powerup_rt.pivot_offset = Vector2.ZERO
+		var tw := create_tween()
+		_powerup_rt.scale = Vector2(1.15, 1.15)
+		tw.tween_property(_powerup_rt, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Rebuilds the vertical power-up list with live countdowns (called every frame).
+func _refresh_powerups() -> void:
+	if _powerup_rt == null:
+		return
+	var lines: Array[String] = []
+	var blink := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
+	# Owned auto-fire guns lead the list — they're the core of the loadout.
+	for s in GunManager.status():
+		var nm: String = s["name"]
+		if int(s["level"]) > 1:
+			nm += " ·%d" % int(s["level"])
+		lines.append(_powerup_row(nm, float(s["time_left"]), blink))
+	if PowerUpManager.speed_stacks > 0:
+		lines.append(_powerup_row("SPEED x%d" % PowerUpManager.speed_stacks, PowerUpManager.speed_time_left(), blink))
+	if PowerUpManager.is_invincible():
+		lines.append(_powerup_row("STAR", PowerUpManager.star_time_left(), blink))
+	if PowerUpManager.is_magnet_active():
+		lines.append(_powerup_row("MAGNET", PowerUpManager.magnet_time_left(), blink))
+
+	if lines.is_empty():
+		_powerup_rt.visible = false
+		return
+	_powerup_rt.visible = true
+	_powerup_rt.text = "\n".join(lines)
+
+
+## One formatted row: name + remaining seconds, blinking red when about to expire.
+func _powerup_row(nm: String, time_left: float, blink: float) -> String:
+	var secs := int(ceil(maxf(time_left, 0.0)))
+	if time_left > 0.0 and time_left <= PowerUpManager.WARN_TIME:
+		# About to drop off — blink between hot red and pale yellow.
+		var c := Color(1.0, 0.28, 0.2).lerp(Color(1.0, 0.96, 0.55), blink)
+		return "[color=#%s]%s  %ds[/color]" % [c.to_html(false), nm, secs]
+	return "[color=#d8f7ff]%s[/color]  [color=#7fd0ff]%ds[/color]" % [nm, secs]
+
+
+# --------------------------------------------------------------- screen FX
+
+## Slick "ENTERING <BIOME>" banner. Sweeps in near the TOP of the screen (under
+## the score bar) so the area reveal reads clearly without blocking the action.
+func _on_biome_changed(biome_name: String) -> void:
+	if biome_name == "":
+		return
+	# Small overline + bold area name, stacked, anchored just below the top bar.
+	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.anchor_left = 0.0
+	box.anchor_right = 1.0
+	box.anchor_top = 0.085
+	box.anchor_bottom = 0.085
+	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.modulate.a = 0.0
+	add_child(box)
+
+	var over := Label.new()
+	over.text = "ⓘ  NOW ENTERING"
+	over.add_theme_font_size_override("font_size", 20)
+	over.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+	over.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	over.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(over)
+
+	var name_l := Label.new()
+	name_l.text = biome_name
+	name_l.add_theme_font_size_override("font_size", 46)
+	name_l.add_theme_color_override("font_color", Color(1, 1, 1))
+	name_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
+	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(name_l)
+
+	# Drop in from a touch higher, hold, then fade up and out.
+	var tw := create_tween()
+	tw.tween_property(box, "modulate:a", 1.0, 0.35)
+	tw.parallel().tween_property(box, "anchor_top", 0.105, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(box, "anchor_bottom", 0.105, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(1.7)
+	tw.tween_property(box, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(box.queue_free)
+
+
+func _build_coin_label() -> void:
+	_coin_label = Label.new()
+	_coin_label.add_theme_font_size_override("font_size", 30)
+	_coin_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.25))
+	_coin_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	_coin_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_coin_label.size = Vector2(220, 40)
+	_coin_label.position = Vector2(get_viewport_rect().size.x - 244, 64)
+	add_child(_coin_label)
+	_on_coins_changed(GameManager.coins)
+
+
+func _on_coins_changed(coins: int) -> void:
+	if _coin_label:
+		_coin_label.text = "◎ %d" % coins
+		_coin_label.pivot_offset = _coin_label.size * 0.5
+		var tw := create_tween()
+		_coin_label.scale = Vector2(1.25, 1.25)
+		tw.tween_property(_coin_label, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+# --------------------------------------------------------------- star power
+
+var _star_banner: Label = null
+var _star_tint: ColorRect = null
+
+func _build_star_banner() -> void:
+	# Pulsing gold edge-glow over the whole screen.
+	_star_tint = ColorRect.new()
+	_star_tint.anchor_right = 1.0
+	_star_tint.anchor_bottom = 1.0
+	_star_tint.color = Color(1.0, 0.85, 0.2, 0.0)
+	_star_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_star_tint)
+
+	_star_banner = Label.new()
+	_star_banner.text = "★ INVINCIBLE ★"
+	_star_banner.add_theme_font_size_override("font_size", 44)
+	_star_banner.add_theme_color_override("font_color", Color(1.0, 0.9, 0.25))
+	_star_banner.add_theme_color_override("font_shadow_color", Color(0.2, 0.05, 0.0, 0.8))
+	_star_banner.add_theme_constant_override("shadow_offset_x", 3)
+	_star_banner.add_theme_constant_override("shadow_offset_y", 3)
+	_star_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_star_banner.anchor_left = 0.0
+	_star_banner.anchor_right = 1.0
+	_star_banner.anchor_top = 0.2
+	_star_banner.anchor_bottom = 0.2
+	_star_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_star_banner.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_star_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_star_banner.visible = false
+	add_child(_star_banner)
+
+
+func _on_star_started(_duration: float) -> void:
+	if _star_banner:
+		_star_banner.visible = true
+
+
+func _on_star_ended() -> void:
+	if _star_banner:
+		_star_banner.visible = false
+	if _star_tint:
+		_star_tint.color.a = 0.0
+
+
+func _update_star_banner() -> void:
+	if _star_banner == null or not _star_banner.visible:
+		return
+	var p := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.009)
+	_star_banner.modulate = Color(1, 1, 1, 0.55 + 0.45 * p)
+	_star_banner.scale = Vector2.ONE * (1.0 + 0.08 * p)
+	_star_banner.pivot_offset = _star_banner.size * 0.5
+	if _star_tint:
+		_star_tint.color.a = 0.06 + 0.07 * p
+
+
+func _build_screen_fx() -> void:
+	_fx_rect = ColorRect.new()
+	_fx_rect.anchor_right = 1.0
+	_fx_rect.anchor_bottom = 1.0
+	_fx_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fx_mat = ShaderMaterial.new()
+	var shader := load("res://shaders/screen_fx.gdshader")
+	if shader:
+		_fx_mat.shader = shader
+		_fx_rect.material = _fx_mat
+	add_child(_fx_rect)
+	move_child(_fx_rect, 0)  # draw behind the HUD widgets
+
+
+## Resets the HUD for a new game.
+func reset() -> void:
+	_display_score = 0.0
+	if _score_label:
+		_score_label.text = "0"
+	for icon in _ability_icons.values():
+		if icon:
+			icon.modulate = Color(0.3, 0.3, 0.3, 0.6)
+	if _milestone_banner:
+		_milestone_banner.visible = false
+	if _combo_label:
+		_combo_label.visible = false

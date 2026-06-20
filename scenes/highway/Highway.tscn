@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/highway/Highway.gd" id="1"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(40.0, 1.0, 250.0)
+
+[node name="Highway" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Floor" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, -50.0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="Segments" type="Node3D" parent="."]

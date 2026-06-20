@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://pmrdbly8obhg"
+path="res://.godot/imported/wall-a-diagonal.obj-cc1e6d2b2a157f88e291f3852a83dce5.mesh"
+
+[deps]
+
+files=["res://.godot/imported/wall-a-diagonal.obj-cc1e6d2b2a157f88e291f3852a83dce5.mesh"]
+
+source_file="res://assets/kenney_retro-urban-kit/Models/OBJ format/wall-a-diagonal.obj"
+dest_files=["res://.godot/imported/wall-a-diagonal.obj-cc1e6d2b2a157f88e291f3852a83dce5.mesh", "res://.godot/imported/wall-a-diagonal.obj-cc1e6d2b2a157f88e291f3852a83dce5.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

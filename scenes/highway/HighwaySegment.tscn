@@ -1,0 +1,27 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scenes/highway/HighwaySegment.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/kenney_retro-urban-kit/Models/OBJ format/Textures/asphalt.png" id="2"]
+
+[sub_resource type="StandardMaterial3D" id="AsphaltMat"]
+albedo_color = Color(0.62, 0.62, 0.66, 1)
+albedo_texture = ExtResource("2")
+uv1_scale = Vector3(7, 10, 1)
+texture_filter = 5
+roughness = 0.7
+
+[sub_resource type="PlaneMesh" id="RoadMesh"]
+material = SubResource("AsphaltMat")
+size = Vector2(14, 20)
+
+[node name="HighwaySegment" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Road" type="MeshInstance3D" parent="."]
+mesh = SubResource("RoadMesh")
+
+[node name="LeftSlot" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.0, 0, 0)
+
+[node name="RightSlot" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.0, 0, 0)

@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://bm24npfsncye"
+path="res://.godot/imported/road-slant-flat.obj-bae982a3d27f3f35e4c1e94a83f48532.mesh"
+
+[deps]
+
+files=["res://.godot/imported/road-slant-flat.obj-bae982a3d27f3f35e4c1e94a83f48532.mesh"]
+
+source_file="res://assets/kenney_city-kit-roads/Models/OBJ format/road-slant-flat.obj"
+dest_files=["res://.godot/imported/road-slant-flat.obj-bae982a3d27f3f35e4c1e94a83f48532.mesh", "res://.godot/imported/road-slant-flat.obj-bae982a3d27f3f35e4c1e94a83f48532.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

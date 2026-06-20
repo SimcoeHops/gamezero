@@ -1,0 +1,11 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Overnight harness — logs are local-only, never commit/push them
+tools/overnight/logs/
+
+# Bundled docs clone — large, not part of the game
+godot-docs-master/
+.DS_Store
+ios-build/
