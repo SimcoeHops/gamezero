@@ -10,9 +10,33 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## NOW — highest leverage (do these first)
 
-<!-- Refilled by the 2026-06-19 deep audit (iter 4). Lowest rubric scores were
-     #6 Progression & retention (2) and #10 Accessibility (2); #5 Audio (3) close
-     behind. These attack those. See JOURNAL scorecard. -->
+<!-- Refilled by the 2026-06-19 deep audit (iter 8). Iters 5-7 lifted the iter-4
+     lows (#5 Audio, #6 Progression, #10 Accessibility) off the floor. The new
+     lowest cluster is #1 Core fun, #4 Visual polish, #8 Difficulty — all at 3.
+     These four items attack those. See the iter-8 JOURNAL scorecard. -->
+
+- [ ] **Visible greed / risk multiplier** (Core fun #1): the near-miss combo (max 9)
+      already exists in GameManager but is nearly invisible — surface it as a BIG escalating
+      on-screen multiplier with a "heat" bar that drains over COMBO_WINDOW and resets to ×1 on
+      any hit. Rising audio pitch per combo tier, color shift hot→white, a chunky "×N" that
+      punches on each near-miss. Reward greedy lane-threading over playing safe. Pure HUD +
+      GameManager wiring, fully verifiable headless.
+
+- [ ] **Flow-state escalation** (Core fun #1): the longer you survive WITHOUT a hit, the
+      hotter the world gets — tie a clean-streak timer to (a) music intensity / engine drone,
+      (b) a creeping color-grade warmth or vignette, (c) gantry/coin density. Make a hot streak
+      *feel* hot; a crash visibly cools it. Builds on the greed multiplier above.
+
+- [ ] **Per-biome environmental particles & atmosphere** (Visual polish #4): the single biggest
+      "asset-flip → art-directed" jump. Add a speed-reactive GPUParticles3D field per biome —
+      Downtown paper/litter, Countryside leaves/pollen, Industrial embers/smoke, Neon glowing
+      motes — plus a subtle biome-tinted near-camera haze. Cross-fade on theme change. (GPU, so
+      verify the spawn/lifecycle headless then flag the *look* for human playtest.)
+
+- [ ] **Player rim/back light + stronger per-biome grade** (Visual polish #4): a back/rim light
+      keyed to the biome accent separates the runner from the road and unifies the Kenney kits
+      under one art-direction; push the per-biome color grade (currently only fog/ambient/sun)
+      toward distinct LUT-like tints so each biome reads as a designed place, not a recolor.
 
 - [ ] **Daily challenge + missions/goals** (Progression #6): 3 rotating goals
       ("near-miss 20 cars", "reach Neon", "own 4 guns at once") with a coin reward + a
@@ -35,8 +59,9 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
       bullet-hell) for replay variety.
 
 ## GAME FEEL / RESPONSIVENESS
-- [ ] Control crispness pass: input buffering on jump, coyote time off ledges/hills, tune
-      lateral easing so lane changes feel snappy but weighty. This is felt, not seen — get it right.
+- [x] Control crispness pass — jump input buffering + coyote time DONE iter 8 (see Done).
+      Follow-up: tune lateral easing (`move_speed`/`lateral_accel`) once playtested — left
+      unchanged this pass to avoid altering feel blind.
 - [ ] Speed-sensation pass: FOV ramps with speed, motion blur / stronger speed-lines at top
       speed, wind audio, engine-drone pitch curve, subtle camera bob. Make 100% speed *scary*.
 - [ ] Character squash & stretch + anticipation on jump/land, dust puff on landing.
@@ -105,6 +130,24 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Control crispness pass: jump input buffering + coyote time** (2026-06-19, iter 8 deep
+      audit ship) — attacks #2 Game feel, the longest-standing flagged gap (called out in the
+      iter-4 audit, never fixed). A jump pressed a few frames BEFORE landing (e.g. out of
+      air-jumps, descending toward traffic) was silently eaten; now it's BUFFERED
+      (`JUMP_BUFFER_TIME` 0.13s) and auto-fires the instant the player lands, so a slightly-early
+      tap bounces straight into the next jump instead of being lost — the classic platformer
+      responsiveness win. Added COYOTE_TIME (0.10s) grace so a ground-jump still works for a beat
+      after leaving the floor (mostly latent on the flat-collision road, but future-proofs ledges/
+      hills if collisions ever follow them). Refactored `request_jump()` → `_try_jump() -> bool`
+      (returns whether a jump actually fired) + buffer-arm on failure; consumed the buffer in the
+      JUMPING→RUNNING landing transition; topped up coyote each grounded frame; cleared both
+      windows in `revive()`. Files: `scenes/player/PlayerController.gd`. Verified: clean headless
+      boot; exercised the full path via the `Main._ready` swap (ground jump → press while
+      descending at y=0.26 out of air-jumps → buffered t=0.130 → re-jumped on landing vy=16.0),
+      swap restored + re-verified clean.
+      - [ ] Human playtest: the 0.13s buffer / 0.10s coyote *feel* — confirm an early tap reads as
+            responsive, not as a "double jump I didn't ask for"; tune the windows if needed.
+      - [ ] Follow-up (logged in GAME FEEL): tune lateral easing once playtested.
 - [x] **Accessibility & options screen** (2026-06-19, iter 7) — attacks the joint-lowest rubric
       score (#10 Accessibility, 2). The game had NO way to tame the (heavy) shake/flash/haptics.
       Added three accessibility knobs persisted in `Settings` under a new `[accessibility]`

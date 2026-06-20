@@ -54,6 +54,18 @@ var _jumps_done: int = 0
 var _jump_held: bool = false
 var _jump_hold: float = 0.0
 
+## Control-crispness: jump input buffering + coyote time. A jump pressed slightly
+## BEFORE landing (or just after stepping off a ledge) should still fire, instead of
+## being silently eaten — the single biggest "responsiveness" win in any platformer.
+## How long a too-early jump press is remembered and re-tried on landing.
+const JUMP_BUFFER_TIME := 0.13
+## Grace window after leaving the ground in which a ground-jump still works.
+const COYOTE_TIME := 0.10
+## Countdown of the buffered jump (>0 = a jump is queued).
+var _jump_buffer_t: float = 0.0
+## Countdown of the coyote grace window (>0 = a late ground-jump is still allowed).
+var _coyote_t: float = 0.0
+
 ## Altitude the player soars at during FLY mode.
 @export var fly_altitude: float = 4.5
 var _fly_timer: float = 0.0
@@ -319,8 +331,18 @@ func _physics_process(delta: float) -> void:
 		activate_ragdoll(Vector3.ZERO)
 		return
 
+	# Tick the input-buffer / coyote windows (real per-frame decay).
+	if _jump_buffer_t > 0.0:
+		_jump_buffer_t = maxf(_jump_buffer_t - delta, 0.0)
+	if _coyote_t > 0.0:
+		_coyote_t = maxf(_coyote_t - delta, 0.0)
+
 	match current_state:
 		State.RUNNING:
+			# Grounded: keep the coyote window topped up so it only counts down once
+			# the player actually leaves the floor.
+			if is_on_floor():
+				_coyote_t = COYOTE_TIME
 			_handle_movement(delta)
 			_handle_ability_input()
 			_update_run_feel(delta)
@@ -334,6 +356,11 @@ func _physics_process(delta: float) -> void:
 			if is_on_floor() and velocity.y <= 0.0:
 				velocity.y = 0.0
 				_transition_to(State.RUNNING)
+				# Honor a jump pressed just before touchdown: bounce straight back up.
+				if _jump_buffer_t > 0.0:
+					_jump_buffer_t = 0.0
+					_coyote_t = COYOTE_TIME  # allow the buffered ground-jump to fire
+					_try_jump()
 
 		State.FLYING:
 			# NOTE: deliberately no _handle_ability_input here. Letting jump /
@@ -434,10 +461,20 @@ func _handle_ability_input() -> void:
 
 ## Performs a jump appropriate to the current state: a ground jump from RUNNING /
 ## BULLET_TIME, or a mid-air (double) jump while already JUMPING. Called by both
-## the keyboard input and the touch swipe-up signal.
+## the keyboard input and the touch swipe-up signal. If the jump can't fire right
+## now (airborne with no air-jump left, descending toward the ground), the press is
+## BUFFERED and automatically re-tried the instant the player lands — so a tap a few
+## frames early still bounces straight into the next jump instead of being lost.
 func request_jump() -> void:
+	if not _try_jump():
+		_jump_buffer_t = JUMP_BUFFER_TIME
+
+
+## Attempts to jump from the current state. Returns true only if a jump actually
+## fired (so the caller knows whether to buffer the press).
+func _try_jump() -> bool:
 	if not _can_jump():
-		return
+		return false
 	match current_state:
 		State.JUMPING:
 			if _jumps_done <= PowerUpManager.air_jumps:
@@ -447,16 +484,23 @@ func request_jump() -> void:
 				Juice.kick_fov(5.0)
 				Juice.haptic(16)
 				_do_front_flip()  # double jumps always flip — it looks great
+				return true
+			return false
 		State.RUNNING, State.BULLET_TIME:
-			if is_on_floor() or current_state == State.RUNNING:
+			# Coyote time: a ground-jump is allowed for a grace window after leaving
+			# the floor, so a jump pressed a hair too late still launches.
+			if is_on_floor() or current_state == State.RUNNING or _coyote_t > 0.0:
 				_transition_to(State.JUMPING)
 				_jumps_done = 1
+				_coyote_t = 0.0
 				_begin_jump(jump_impulse)
 				ability_activated.emit(&"jump")
 				Juice.kick_fov(5.0)
 				Juice.haptic(18)
 				if randf() < front_flip_chance:
 					_do_front_flip()
+				return true
+	return false
 
 
 ## Activates bullet time if unlocked and available. Shared by keyboard + swipe-down.
@@ -692,6 +736,8 @@ func revive() -> void:
 	velocity = Vector3.ZERO
 	global_position.x = 0.0
 	_bt_ramping = false
+	_jump_buffer_t = 0.0
+	_coyote_t = 0.0
 	Engine.time_scale = 1.0
 
 	if _animation_player and _animation_player.has_animation("run"):

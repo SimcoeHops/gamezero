@@ -364,3 +364,72 @@ boot. Test left the dev save's accessibility values at defaults (the test restor
 - No GPU/visual confirmation of the live shake-preview look or panel layout at real resolution
   (the front-end panel is now title + 2 audio rows + section label + 3 accessibility rows + BACK;
   should fit 720p+ but verify).
+
+---
+
+## 2026-06-19 — Deep audit (iter 8) + control-crispness pass (jump buffer + coyote)
+
+**Mode:** Deep-audit (iteration 8 = multiple of 4). Booted clean headless; re-read the core
+scripts critically (PlayerController, GameManager, CarSpawner, Main) with iters 5-7's changes in
+mind. Iters 5-7 had attacked the iter-4 lows (Audio, Progression, Accessibility), so this audit
+re-scores to find the new floor.
+
+**Rubric scorecard (harsh critic, 1–5):**
+1. **Core fun & game loop — 3.** Stacking guns + level-up pick + dodge/combo + biomes + shop +
+   PB chase make a real loop. But the near-miss combo (the natural "greed" hook) is buried —
+   GameManager tracks `combo` up to ×9 yet it barely shows. No boss/pursuer beat, no flow-state
+   escalation. The depth is there; the *moment-to-moment thrill spikes* aren't surfaced.
+2. **Game feel / responsiveness — 3 → ~3.5 after this ship.** Variable jump, eased steering,
+   speed-FOV, lean/flair are good. The flagged gap (jump input buffering / coyote time) is what
+   this iteration fixes. Lateral easing still untuned.
+3. **Juice & feedback — 4.** Crash, level-up, near-miss, gantry, star, game-over celebration all
+   strong. Standing gap: **coin pickup** is still near-silent (logged since iter 4).
+4. **Visual polish & art direction — 3 (joint-lowest).** Real post stack (ACES, glow, grade, fog)
+   + per-biome fog/ambient/sun, but NO env particles, weather, per-biome skybox, or player
+   rim-light. Up close it still reads as assembled Kenney kits, not an art-directed world.
+5. **Audio — 3.5.** Per-gun SFX (iter 5) fixed the loadout fantasy; playlist + drone + pooled
+   pitched SFX. Still no adaptive-music layers or milestone stingers.
+6. **Progression & retention — 3.** Shop (iter 6) + PB/best-distance recap (iter 4) lifted this
+   off 2. Still no daily/missions, no leaderboard, skins ungated.
+7. **Onboarding & UX — 3.** Front-end cards + improved recap; still no tutorial / teaching moment.
+8. **Difficulty & balance — 3 (joint-lowest).** Sensible ramp + always-dodgeable gap + traffic
+   eases at speed, but gun balance is unvalidated and there's no dynamic difficulty. First-guess
+   curves throughout (XP, economy, spawn).
+9. **Performance & stability — 3.** Clean, no errors, but still **no pooling** (cars/coins/
+   projectiles/particles instantiate+free) — worst-case carnage unmeasured.
+10. **Accessibility & options — 3.** Shake/haptics/flash toggles (iter 7) lifted this off 2;
+    still no colorblind, motion-blur, remap, or text-scale.
+
+**Lowest cluster: #1 Core fun (3), #4 Visual polish (3), #8 Difficulty (3).** Per VISION priority
+(fun → feel → looks), refilled BACKLOG "NOW" with 4 scoped items attacking #1 and #4: a visible
+greed/risk multiplier, flow-state escalation, per-biome environmental particles/atmosphere, and a
+player rim-light + stronger per-biome grade.
+
+**Shipped this iteration (the best fully-completable + headless-verifiable one):** the
+**control-crispness pass** — jump input buffering + coyote time (rubric #2 Game feel, the
+longest-standing flagged gap; chosen over the visual items because it's pure logic, fully
+verifiable headless, and directly serves the #1-priority "feel"). A jump pressed a few frames
+BEFORE landing — the common case when you're descending toward traffic and out of air-jumps —
+was silently eaten; now it's buffered (`JUMP_BUFFER_TIME` 0.13s) and auto-fires the instant the
+player lands, so a slightly-early tap bounces straight into the next jump. Added `COYOTE_TIME`
+(0.10s) grace for a late ground-jump after leaving the floor (mostly latent on the flat-collision
+road but future-proofs ledges/hills). Refactored `request_jump()` → `_try_jump() -> bool` + buffer
+arm on failure; consumed the buffer in the JUMPING→RUNNING landing transition; topped up coyote
+each grounded frame; cleared both windows in `revive()`.
+
+**Files touched:** `scenes/player/PlayerController.gd`, `BACKLOG.md`, `tools/overnight/JOURNAL.md`.
+
+**Verified (per CLAUDE.md):** Clean headless boot (no `error|script|parse|invalid|shader`).
+Exercised the full path via the documented `Main._ready` swap (`_feel_test`): forced `start_game`,
+enabled the jump ability, ground-jumped (state→JUMPING vy=16.0), fell to y=0.26 descending
+(vy=-14.7) and pressed jump while out of air-jumps → `_jump_buffer_t=0.130` (buffered, not lost) →
+on landing the buffer fired automatically (`rejumped=true`, state JUMPING, vy=16.0). Restored
+`Main.gd` from `/tmp/Main.gd.bak` (grep confirms `_feel_test`/`FEELTEST` gone, `_front_end.begin()`
+back), re-ran a clean headless boot.
+
+**Unverified / risk — human should playtest:** the *feel* of the 0.13s buffer / 0.10s coyote —
+confirm an early tap reads as crisp/responsive and never as an unwanted "double jump I didn't ask
+for"; tune the windows if needed. Lateral easing (`move_speed`/`lateral_accel`) was deliberately
+left unchanged this pass (don't alter feel blind) — logged as a follow-up. Coyote is largely
+dormant given the flat collision road (the player only leaves the ground by jumping), so the real
+felt win here is the buffer; coyote is correctness/future-proofing.
