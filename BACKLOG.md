@@ -10,11 +10,6 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## NOW — highest leverage (do these first)
 
-- [ ] **Level-up "choose your gun" moment (the core fun lever).** Vampire-Survivors' magic is
-      the pick-1-of-3 upgrade screen. On milestone/level-up, briefly slow time and present 3
-      gun/upgrade cards to pick from (reuse GunManager `GUNS` + the FrontEnd card styling).
-      This converts passive pickups into *meaningful choices* — the single biggest "one more
-      run" multiplier. Make the card reveal + selection juicy (slow-mo, sound, punch).
 - [ ] **Crash sequence, taken to "wow".** Crashing is the signature spectacle (pillar #2).
       Layer it: brief hit-stop → slow-mo → camera punch + heavy shake → debris/glass particles
       → screen flash + chromatic aberration → crunch SFX stack → haptic. Then a satisfying
@@ -105,3 +100,16 @@ add follow-ups you discover. The deep-audit iterations will keep refilling and r
 
 ## Done
 <!-- iterations move finished items here with a date + one-line note -->
+- [x] **Level-up "choose your gun" moment** (2026-06-19) — dodges are now XP (GameManager
+      `run_level`/`level_up`); filling the bar freezes the run (tree pause) and shows 3 themed
+      gun cards (`scenes/ui/LevelUpScreen.gd`). Pick grants/levels the gun via `add_gun`.
+      Added a HUD XP bar + level badge, punch-in card animations, NEW/LV-up badges, number-key
+      selection, reward flash on pick. Follow-ups below.
+      - [ ] Card polish v2: render a live 3D gun GLB per card (reuse FrontEnd SubViewport
+            pattern) instead of the color slab + ► glyph; add a slow idle spin.
+      - [ ] Add non-gun upgrade cards (extra air-jump, coin magnet, +speed, heal/shield) so
+            choices aren't only guns — deepen the build variety.
+      - [ ] Tune the XP curve (`LEVEL_XP_BASE`/`STEP`) against real dodge rates once playtested;
+            current 7 + 3·level may level too fast/slow.
+      - [ ] Re-pick weighting: bias toward upgrading owned guns later in a run so power *stacks*
+            visibly rather than always sprawling into new guns.

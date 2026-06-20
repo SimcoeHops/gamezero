@@ -28,6 +28,13 @@ var _coin_label: Label = null
 var _fx_rect: ColorRect = null
 var _fx_mat: ShaderMaterial = null
 
+# XP / level bar.
+var _xp_bg: Panel = null
+var _xp_fill: Panel = null
+var _level_label: Label = null
+const XP_BAR_SIZE := Vector2(420.0, 12.0)
+var _xp_display: float = 0.0
+
 var _display_score: float = 0.0
 
 
@@ -53,6 +60,7 @@ func _ready() -> void:
 	PowerUpManager.star_started.connect(_on_star_started)
 	PowerUpManager.star_ended.connect(_on_star_ended)
 	PowerUpManager.pickup_announced.connect(_on_pickup_announced)
+	GameManager.level_up.connect(_on_level_up)
 
 	if _milestone_banner:
 		_milestone_banner.visible = false
@@ -70,6 +78,7 @@ func _ready() -> void:
 	_build_powerup_label()
 	_build_combo_label()
 	_build_coin_label()
+	_build_xp_bar()
 	_update_powerups()
 	_update_speed_display()
 
@@ -128,6 +137,7 @@ func _process(delta: float) -> void:
 		# about-to-expire warning blinks.
 		_refresh_powerups()
 		_update_star_banner()
+		_update_xp_bar(delta)
 
 
 # --------------------------------------------------------------- score / speed
@@ -490,6 +500,74 @@ func _update_star_banner() -> void:
 		_star_tint.color.a = 0.06 + 0.07 * p
 
 
+# --------------------------------------------------------------- XP / level bar
+
+## A slim centered level bar under the top edge — fills with dodges (XP) so the
+## level-up card moment reads as earned, not random.
+func _build_xp_bar() -> void:
+	var row := HBoxContainer.new()
+	row.anchor_left = 0.0
+	row.anchor_right = 1.0
+	row.anchor_top = 0.0
+	row.anchor_bottom = 0.0
+	row.offset_top = 16.0
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 12)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(row)
+
+	_level_label = Label.new()
+	_level_label.text = "LV 1"
+	_level_label.add_theme_font_size_override("font_size", 24)
+	_level_label.add_theme_color_override("font_color", Color(0.8, 0.92, 1.0))
+	_level_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	_level_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(_level_label)
+
+	_xp_bg = Panel.new()
+	_xp_bg.custom_minimum_size = XP_BAR_SIZE
+	_xp_bg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_xp_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg_sb := StyleBoxFlat.new()
+	bg_sb.bg_color = Color(0.04, 0.06, 0.10, 0.6)
+	bg_sb.set_corner_radius_all(6)
+	bg_sb.set_border_width_all(1)
+	bg_sb.border_color = Color(0.5, 0.8, 1.0, 0.4)
+	_xp_bg.add_theme_stylebox_override("panel", bg_sb)
+	row.add_child(_xp_bg)
+
+	_xp_fill = Panel.new()
+	_xp_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_xp_fill.position = Vector2(2, 2)
+	_xp_fill.size = Vector2(0, XP_BAR_SIZE.y - 4)
+	var fill_sb := StyleBoxFlat.new()
+	fill_sb.bg_color = Color(0.45, 0.85, 1.0, 0.95)
+	fill_sb.set_corner_radius_all(5)
+	_xp_fill.add_theme_stylebox_override("panel", fill_sb)
+	_xp_bg.add_child(_xp_fill)
+
+
+## Eases the fill toward the live XP fraction each frame.
+func _update_xp_bar(delta: float) -> void:
+	if _xp_fill == null:
+		return
+	var goal := GameManager.level_progress()
+	_xp_display = move_toward(_xp_display, goal, maxf(absf(goal - _xp_display) * 6.0, 1.5) * delta)
+	var w := (XP_BAR_SIZE.x - 4.0) * clampf(_xp_display, 0.0, 1.0)
+	_xp_fill.size.x = w
+
+
+func _on_level_up(level: int) -> void:
+	# Snap the bar empty (it just drained into a level) and punch the badge.
+	_xp_display = 0.0
+	if _level_label:
+		_level_label.text = "LV %d" % level
+		_level_label.pivot_offset = _level_label.size * 0.5
+		var tw := create_tween()
+		_level_label.scale = Vector2(1.5, 1.5)
+		tw.tween_property(_level_label, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
 func _build_screen_fx() -> void:
 	_fx_rect = ColorRect.new()
 	_fx_rect.anchor_right = 1.0
@@ -516,3 +594,8 @@ func reset() -> void:
 		_milestone_banner.visible = false
 	if _combo_label:
 		_combo_label.visible = false
+	_xp_display = 0.0
+	if _xp_fill:
+		_xp_fill.size.x = 0.0
+	if _level_label:
+		_level_label.text = "LV 1"

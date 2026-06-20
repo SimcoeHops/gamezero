@@ -73,6 +73,19 @@ const GUNS := {
 	},
 }
 
+## One-line flavor for each gun, shown on the level-up choice cards.
+const GUN_DESC := {
+	"PISTOL": "Steady aimed shots",
+	"RAPID": "Blistering bullet stream",
+	"SHOTGUN": "Close-range buckshot",
+	"LASER": "Instant piercing beam",
+	"MORTAR": "Lobbed area blast",
+	"SPREAD": "Three-way volley",
+	"MINIGUN": "Relentless bullet hose",
+	"RAILGUN": "Heavy piercing slug",
+	"NET": "Wide crowd-clearing sweep",
+}
+
 ## Stable, ordered list of gun ids (for random pickup).
 var GUN_IDS: Array = GUNS.keys()
 
@@ -217,6 +230,46 @@ func gun_color(id: String) -> Color:
 
 func gun_name(id: String) -> String:
 	return GUNS[id]["name"] if GUNS.has(id) else id
+
+
+func gun_desc(id: String) -> String:
+	return GUN_DESC.get(id, "")
+
+
+## Current level of an owned gun (0 if not owned).
+func gun_level(id: String) -> int:
+	return int(owned.get(id, 0))
+
+
+## Builds a set of [param count] distinct gun choices for a level-up pick. Each is
+## {id, level (current, 0=new), is_new}. Guns already maxed are skipped; at least
+## one brand-new gun is offered when any remain undiscovered, for the thrill of it.
+func roll_choices(count: int = 3) -> Array:
+	var unowned: Array = []
+	var upgradable: Array = []
+	for id in GUN_IDS:
+		var lvl := int(owned.get(id, 0))
+		if lvl == 0:
+			unowned.append(id)
+		elif lvl < MAX_LEVEL:
+			upgradable.append(id)
+	unowned.shuffle()
+	upgradable.shuffle()
+
+	var picks: Array = []
+	# Lead with a new gun when possible so most level-ups expand the loadout.
+	if not unowned.is_empty():
+		picks.append(unowned.pop_back())
+	# Fill the rest from a shuffled blend of what's left.
+	var pool: Array = unowned + upgradable
+	pool.shuffle()
+	while picks.size() < count and not pool.is_empty():
+		picks.append(pool.pop_back())
+
+	var out: Array = []
+	for id in picks:
+		out.append({"id": id, "level": int(owned.get(id, 0)), "is_new": not owned.has(id)})
+	return out
 
 
 ## Compact owned-gun list for the HUD, e.g. ["LASER", "RAPID·2"].

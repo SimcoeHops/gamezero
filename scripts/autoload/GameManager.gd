@@ -23,6 +23,9 @@ signal coins_changed(coins: int)
 ## Emitted when the world enters a new biome (for the HUD banner).
 signal biome_changed(biome_name: String)
 
+## Emitted when the run level increases (drives the "choose a weapon" card screen).
+signal level_up(level: int)
+
 ## Emitted when the player dies but can pay to continue.
 signal continue_offered(cost: int)
 
@@ -74,6 +77,18 @@ var biome_log: Array = []
 var combo: int = 1
 var _combo_timer: float = 0.0
 
+## --- Run level / XP (Vampire-Survivors "level up, pick a weapon") ---
+## Dodges are XP. Filling the bar triggers a level-up card pick. Each level costs
+## a little more than the last so the cadence stretches as the run gets deeper.
+const LEVEL_XP_BASE := 7
+const LEVEL_XP_STEP := 3
+## Current run level (starts at 1).
+var run_level: int = 1
+## Dodges accumulated toward the next level.
+var level_xp: int = 0
+## Dodges required to reach the next level.
+var level_xp_needed: int = LEVEL_XP_BASE
+
 ## Continue economy for the current run.
 var continue_cost: int = BASE_CONTINUE_COST
 var continues_used: int = 0
@@ -109,6 +124,9 @@ func start_game() -> void:
 	highway_speed = 15.0
 	combo = 1
 	_combo_timer = 0.0
+	run_level = 1
+	level_xp = 0
+	level_xp_needed = LEVEL_XP_BASE
 	continue_cost = BASE_CONTINUE_COST
 	continues_used = 0
 	ProgressionManager.reset()
@@ -213,6 +231,25 @@ func add_points(base: int) -> void:
 
 func _on_dodge_registered(_total: int) -> void:
 	add_points(DODGE_POINTS)
+	_advance_level_progress()
+
+
+## Counts a dodge toward the level bar; fires [signal level_up] each time it fills
+## (a while-loop in case a single frame pushes past a threshold).
+func _advance_level_progress() -> void:
+	if current_state != GameState.PLAYING:
+		return
+	level_xp += 1
+	while level_xp >= level_xp_needed:
+		level_xp -= level_xp_needed
+		run_level += 1
+		level_xp_needed += LEVEL_XP_STEP
+		level_up.emit(run_level)
+
+
+## Fraction (0..1) of the way to the next level, for the HUD XP bar.
+func level_progress() -> float:
+	return clampf(float(level_xp) / float(maxi(level_xp_needed, 1)), 0.0, 1.0)
 
 
 func _on_near_miss() -> void:
